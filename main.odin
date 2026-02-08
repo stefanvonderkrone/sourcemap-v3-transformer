@@ -87,7 +87,11 @@ json_read_sourcemap :: proc(data: []u8, source_map: ^SourceMapV3, allocator := c
 			fmt.printfln("mappings Null or not a string")
 			return
 		}
-		fmt.printfln("%v", mappings_decode(mappings, allocator))
+		decoded := mappings_decode(mappings, allocator)[0]
+		for d in decoded {
+			fmt.printfln("%v", d)
+		}
+		fmt.printfln("%i", len(decoded))
 		source_map.mappings = strings.clone(mappings, allocator)
 	}
 
@@ -186,28 +190,65 @@ json_object_get_prop :: proc(object: json.Object, key: string, $T: typeid) -> (T
 // the strings are separated by `;` for each file and by `,` for each offset into a file
 // so in the end we have a three dimensional list of integers
 mappings_decode :: proc(mappings: string, allocator := context.allocator) -> [][][]i32 {
-	mappings_list := strings.split(mappings, ";", allocator)
-	result := make([dynamic][][]i32, 0, len(mappings_list), allocator)
+	arena: vmem.Arena
+	arena_allocator := vmem.arena_allocator(&arena)
+	defer vmem.arena_destroy(&arena)
 
-	for file_mapping in mappings_list {
-		file_mapping_list := strings.split(file_mapping, ",", allocator)
-		file_result := make([dynamic][]i32, 0, len(file_mapping_list), allocator)
+	lines := strings.split(mappings, ";", arena_allocator)
+	num_lines := len(lines)
+	result := make([dynamic][][]i32, num_lines, num_lines, allocator)
 
-		previous_offsets: []i32
-		for vlq_string in file_mapping_list {
-			decoded_offsets := vlq_decode(vlq_string, allocator)
+	generated_column: i32
+	source_index: i32
+	original_line: i32
+	original_column: i32
+	names_index: i32
 
-			if len(decoded_offsets) == len(previous_offsets) {
-				for i in 0 ..< len(decoded_offsets) {
-					decoded_offsets[i] = previous_offsets[i] + decoded_offsets[i]
+	for line, line_index in lines {
+		generated_column = 0
+		segments := strings.split(line, ",", arena_allocator)
+		num_segments := len(segments)
+		decoded_segments := make([dynamic][]i32, num_segments, num_segments, allocator)
+
+		if len(segments) > 0 {
+			for segment, index in segments {
+				values := vlq_decode(segment, allocator)
+				num_values := len(values)
+
+				if num_values >= 1 {
+					generated_column += values[0]
 				}
-			}
 
-			append(&file_result, decoded_offsets)
-			previous_offsets = decoded_offsets
+				if num_values >= 4 {
+					source_index += values[1]
+					original_line += values[2]
+					original_column += values[3]
+				}
+
+				if num_values == 5 {
+					names_index += values[4]
+				}
+
+				decoded_segment := make([dynamic]i32, num_values, num_values, allocator)
+				if num_values >= 1 {
+					decoded_segment[0] = generated_column
+				}
+
+				if num_values >= 4 {
+					decoded_segment[1] = source_index
+					decoded_segment[2] = original_line
+					decoded_segment[3] = original_column
+				}
+
+				if num_values == 5 {
+					decoded_segment[4] = names_index
+				}
+
+				decoded_segments[index] = decoded_segment[:]
+			}
 		}
 
-		append(&result, file_result[:])
+		result[line_index] = decoded_segments[:]
 	}
 
 	return result[:]
