@@ -20,16 +20,30 @@ main :: proc() {
 		fmt.printfln("%e", file_error)
 		return
 	}
-	smv3: SourceMapV3
-	json_read_sourcemap(data, &smv3)
+	source_map: SourceMapV3
+	json_read_sourcemap(data, &source_map)
 	free_all(context.temp_allocator)
-	// fmt.printfln("%v", smv3)
+
+	line: i32 = 13
+	column: i32 = 9767
+	mapping, ok := translate_mapping(source_map, line, column)
+
+	fmt.printfln("line: %i, column, %i", line, column)
+	if ok {
+		fmt.printfln("original_line: %i", mapping.original_line + 1)
+		fmt.printfln("original_column: %i", mapping.original_column + 1)
+		fmt.printfln("original_file: %s", source_map.sources[mapping.source_index])
+		if mapping.length > 4 {
+			fmt.printfln("original_name: %s", source_map.names[mapping.name_index])
+		}
+	}
+
 }
 
 SourceMapV3 :: struct {
 	version:         i64, // mandatory
 	file:            string, // optional
-	mappings:        string, // mandatory
+	mappings:        []MappingLine, // mandatory
 	source_root:     string, // optional
 	ignore_list:     []i64, // optional
 	names:           []string, // optional
@@ -37,12 +51,57 @@ SourceMapV3 :: struct {
 	sources_content: []string, // optional
 }
 
+MappingLine :: struct {
+	mappings: []Mapping,
+}
+
+Mapping :: struct {
+	length:           i32,
+	generated_column: i32,
+	source_index:     i32,
+	original_line:    i32,
+	original_column:  i32,
+	name_index:       i32,
+}
+
+translate_mapping :: proc(source_map: SourceMapV3, line: i32, col: i32) -> (^Mapping, bool) {
+	generated_line := line - 1
+	generated_column := col - 1
+
+	num_mapping_lines := i32(len(source_map.mappings))
+	if generated_line >= num_mapping_lines {
+		fmt.printfln("line out of range: %i", line)
+		return nil, false
+	}
+
+	mapping_line := source_map.mappings[generated_line]
+
+	if len(mapping_line.mappings) == 0 {
+		fmt.printfln("empty mapping_line: %i", line)
+		return nil, false
+	}
+
+	mapping := &mapping_line.mappings[0]
+	for _, index in mapping_line.mappings {
+		#no_bounds_check {
+			m := &mapping_line.mappings[index]
+			if m.generated_column <= generated_column {
+				mapping = m
+			} else {
+				break
+			}
+		}
+	}
+
+	return mapping, true
+}
 
 json_read_sourcemap :: proc(data: []u8, source_map: ^SourceMapV3, allocator := context.allocator) {
 	arena: vmem.Arena
 	arena_allocator := vmem.arena_allocator(&arena)
 	defer vmem.arena_destroy(&arena)
 	value, json_error := json.parse(data, parse_integers = true, allocator = arena_allocator)
+
 	if json_error != nil {
 		fmt.printfln("%e", json_error)
 		return
@@ -87,12 +146,13 @@ json_read_sourcemap :: proc(data: []u8, source_map: ^SourceMapV3, allocator := c
 			fmt.printfln("mappings Null or not a string")
 			return
 		}
-		decoded := mappings_decode(mappings, allocator)[0]
-		for d in decoded {
-			fmt.printfln("%v", d)
-		}
-		fmt.printfln("%i", len(decoded))
-		source_map.mappings = strings.clone(mappings, allocator)
+		decoded_mappings := mappings_decode(mappings, allocator)
+		// decoded := decoded_mappings[len(decoded_mappings) - 1]
+		// for d in decoded.mappings {
+		// 	fmt.printfln("%v", d)
+		// }
+		// fmt.printfln("%i", len(decoded.mappings))
+		source_map.mappings = decoded_mappings
 	}
 
 	// ingoreList (optional)
@@ -189,14 +249,14 @@ json_object_get_prop :: proc(object: json.Object, key: string, $T: typeid) -> (T
 // mappings is a string of bas64 vlq strings that encode a list of integers
 // the strings are separated by `;` for each file and by `,` for each offset into a file
 // so in the end we have a three dimensional list of integers
-mappings_decode :: proc(mappings: string, allocator := context.allocator) -> [][][]i32 {
+mappings_decode :: proc(mappings: string, allocator := context.allocator) -> []MappingLine {
 	arena: vmem.Arena
 	arena_allocator := vmem.arena_allocator(&arena)
 	defer vmem.arena_destroy(&arena)
 
 	lines := strings.split(mappings, ";", arena_allocator)
 	num_lines := len(lines)
-	result := make([dynamic][][]i32, num_lines, num_lines, allocator)
+	result := make([dynamic]MappingLine, num_lines, num_lines, allocator)
 
 	generated_column: i32
 	source_index: i32
@@ -208,11 +268,76 @@ mappings_decode :: proc(mappings: string, allocator := context.allocator) -> [][
 		generated_column = 0
 		segments := strings.split(line, ",", arena_allocator)
 		num_segments := len(segments)
-		decoded_segments := make([dynamic][]i32, num_segments, num_segments, allocator)
+		mapping_line := result[line_index]
+		decoded_segments := make([dynamic]Mapping, num_segments, num_segments, allocator)
 
 		if len(segments) > 0 {
 			for segment, index in segments {
 				values := vlq_decode(segment, allocator)
+				num_values := len(values)
+
+				if num_values >= 1 {
+					generated_column += values[0]
+				}
+
+				if num_values >= 4 {
+					source_index += values[1]
+					original_line += values[2]
+					original_column += values[3]
+				}
+
+				if num_values == 5 {
+					names_index += values[4]
+				}
+
+				decoded_mapping := decoded_segments[index]
+				decoded_mapping.length = i32(num_values)
+				if num_values >= 1 {
+					decoded_mapping.generated_column = generated_column
+				}
+
+				if num_values >= 4 {
+					decoded_mapping.source_index = source_index
+					decoded_mapping.original_line = original_line
+					decoded_mapping.original_column = original_column
+				}
+
+				if num_values == 5 {
+					decoded_mapping.name_index = names_index
+				}
+
+				decoded_segments[index] = decoded_mapping
+			}
+		}
+
+		mapping_line.mappings = decoded_segments[:]
+		result[line_index] = mapping_line
+	}
+
+	return result[:]
+}
+
+// a clone of `mappings_decode` but without string splitting
+mappings_decode_v2 :: proc(mappings: string, allocator := context.allocator) -> [][][]i32 {
+	result := make([dynamic][][]i32, 0, 0, allocator)
+
+	current := 0
+	mapping: string
+	generated_column: i32
+	source_index: i32
+	original_line: i32
+	original_column: i32
+	names_index: i32
+
+	decoded_segments := make([dynamic][]i32, 0, 0, allocator)
+
+	for char, index in mappings {
+		if char == ',' || char == ';' {
+			mapping = mappings[current:index]
+			current = index + 1
+
+			if len(mapping) > 0 {
+				values := vlq_decode(mapping, allocator)
 				num_values := len(values)
 
 				if num_values >= 1 {
@@ -244,11 +369,14 @@ mappings_decode :: proc(mappings: string, allocator := context.allocator) -> [][
 					decoded_segment[4] = names_index
 				}
 
-				decoded_segments[index] = decoded_segment[:]
+				append(&decoded_segments, decoded_segment[:])
 			}
 		}
 
-		result[line_index] = decoded_segments[:]
+		if char == ';' {
+			append(&result, decoded_segments[:])
+			decoded_segments := make([dynamic][]i32, 0, 0, allocator)
+		}
 	}
 
 	return result[:]
