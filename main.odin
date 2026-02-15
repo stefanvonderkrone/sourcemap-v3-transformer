@@ -6,29 +6,64 @@ import "core:mem"
 import vmem "core:mem/virtual"
 import "core:os"
 import "core:slice"
+import "core:strconv"
 import "core:strings"
 import "core:testing"
 
-EXAMPE_FILE :: "example.js.map"
-
 main :: proc() {
-	data, file_error := os.read_entire_file_from_filename_or_err(
-		EXAMPE_FILE,
-		context.temp_allocator,
-	)
-	if file_error != nil {
-		fmt.printfln("%e", file_error)
+	num_args := len(os.args)
+	command := num_args > 1 ? os.args[1] : "help"
+	switch command {
+	case "help":
+		cmd_print_help(.Help)
+	case "translate":
+		cmd_translate(os.args[2:])
+	}
+}
+
+cmd_print_help :: proc(cmd: Command) {
+	switch cmd {
+	case .Translate:
+		fmt.println("print help translate")
+	case .Help:
+		fmt.println("print help")
+	}
+}
+
+cmd_translate :: proc(args: []string) {
+	num_args := len(args)
+	if num_args == 0 {
+		cmd_print_help(.Translate)
 		return
 	}
+
+	file_name := args[0]
+	line: i32 = 0
+	column: i32 = 0
+
+	if num_args > 0 {
+		if l, ok := strconv.parse_int(args[1]); ok {
+			line = i32(l)
+		}
+	}
+
+	if num_args > 1 {
+		if c, ok := strconv.parse_int(args[2]); ok {
+			column = i32(c)
+		}
+	}
+
+	data, file_error := os.read_entire_file_from_filename_or_err(file_name, context.temp_allocator)
+	if file_error != nil {
+		fmt.eprintfln("%e", file_error)
+		return
+	}
+
 	source_map: SourceMapV3
 	json_read_sourcemap(data, &source_map)
 	free_all(context.temp_allocator)
 
-	line: i32 = 13
-	column: i32 = 9767
 	mapping, ok := translate_mapping(source_map, line, column)
-
-	fmt.printfln("line: %i, column, %i", line, column)
 	if ok {
 		fmt.printfln("original_line: %i", mapping.original_line + 1)
 		fmt.printfln("original_column: %i", mapping.original_column + 1)
@@ -37,7 +72,11 @@ main :: proc() {
 			fmt.printfln("original_name: %s", source_map.names[mapping.name_index])
 		}
 	}
+}
 
+Command :: enum {
+	Help,
+	Translate,
 }
 
 SourceMapV3 :: struct {
