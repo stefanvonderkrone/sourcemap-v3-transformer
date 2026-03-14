@@ -12,7 +12,7 @@ import "core:strings"
 import "core:testing"
 import "core:text/regex"
 
-CHROME_STACK_TRACE := #load("stacktraces/safari-dev.txt", string)
+CHROME_STACK_TRACE := #load("stacktraces/deno.txt", string)
 
 main :: proc() {
 	num_args := len(os.args)
@@ -137,6 +137,8 @@ parse_stack_trace_chromium :: proc(stack_trace: string) {
 		// parse line
 		line_str, line_str_ok := parser_collect_until(&parser, ':')
 		if !line_str_ok {
+			// TODO: bun internal function
+			//       at loadAndEvaluateModule (2:1)
 			continue
 		}
 		line, line_ok := strconv.parse_uint(line_str, 10)
@@ -157,6 +159,11 @@ parse_stack_trace_chromium :: proc(stack_trace: string) {
 				break
 			}
 			if char == '/' && parser_char_at(&parser, idx - 1) == '/' {
+				if parser_char_at(&parser, idx - 2) == '/' {
+					// local file paths
+					start_pos -= 1
+					break
+				}
 				start_pos = last_slash_pos
 				break
 			}
