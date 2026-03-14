@@ -12,7 +12,7 @@ import "core:strings"
 import "core:testing"
 import "core:text/regex"
 
-CHROME_STACK_TRACE := #load("stacktraces/chromium-dev.txt", string)
+CHROME_STACK_TRACE := #load("stacktraces/safari-dev.txt", string)
 
 main :: proc() {
 	num_args := len(os.args)
@@ -109,29 +109,6 @@ Mapping :: struct {
 	name_index:       i32,
 }
 
-// * skip whitespace, `at` and whitespace
-// * optionally capture identifier, skip whitspace and opening bracket
-// * skip everything up until single `/`
-// * capture pathname up until first `:`
-// * capture line number up until next `:`
-// * capture column number up until end of line or closing bracket
-parse_stack_trace :: proc(stack_trace: string) {
-	lines := strings.split(stack_trace, "\n")
-	chrome_re, chrome_re_error := regex.create(
-		"^\\s*at\\s*(?:([^\\s]+)\\s*\\()?.*(?:\\w?:\\/\\/[^/]+)(.*):(\\d+):(\\d+)\\)?$", // "/^\\s*at (.*?) ?\\(((?:file|https?|blob|chrome-extension|native|eval|webpack|rsc|<anonymous>|\\/|[a-z]:\\\\|\\\\\\\\).*?)(?::(\\d+))?(?::(\\d+))?\\)?\\s*$/i",
-	)
-	if chrome_re_error != nil {
-		fmt.printfln("could not create chrome_re: %v", chrome_re_error)
-	}
-	for line in lines {
-		fmt.printfln("line: %s", line)
-		capture, ok := regex.match_and_allocate_capture(chrome_re, line)
-		if ok {
-			fmt.printfln("group: %v", capture.groups)
-		}
-	}
-}
-
 parse_stack_trace_chromium :: proc(stack_trace: string) {
 	lines := strings.split(stack_trace, "\n")
 	for stack_frame in lines {
@@ -160,7 +137,6 @@ parse_stack_trace_chromium :: proc(stack_trace: string) {
 		// parse line
 		line_str, line_str_ok := parser_collect_until(&parser, ':')
 		if !line_str_ok {
-			// is it possible, that a stack trace would only contain the line without a column?
 			continue
 		}
 		line, line_ok := strconv.parse_uint(line_str, 10)
@@ -180,43 +156,20 @@ parse_stack_trace_chromium :: proc(stack_trace: string) {
 			if char == '(' || char == ' ' {
 				break
 			}
-			// fmt.printfln("char: %c, p_char: %c", char, parser_char_at(&parser, idx - 1))
 			if char == '/' && parser_char_at(&parser, idx - 1) == '/' {
-				// fmt.printfln("found // at %i", idx)
 				start_pos = last_slash_pos
 				break
 			}
 			if char == '/' {
-				// fmt.printfln("found / at %i", idx)
 				last_slash_pos = idx
 			}
 
 			last_char = char
 
 		}
-		// for {
-		// 	start_pos = parser_current_position(&parser)
-		// 	path_segment, path_segment_ok := parser_collect_until(&parser, '/')
-		// 	if !path_segment_ok {
-		// 		break
-		// 	}
-		// 	if parser_current_char(&parser) == '/' {
-		// 		break
-		// 	}
-		// 	if parser_current_position(&parser) == 0 {
-		// 		break
-		// 	}
-		// }
 
 		path := stack_frame[start_pos + 1:end_pos + 1]
 		fmt.printfln("path: %s", path)
-
-		// parse path
-		// fmt.printfln("current_char: %c", parser_current_char(&parser))
-
-		// for char, idx in parser_iterator(&parser) {
-		// 	fmt.printfln("char: %c, char_code: %i, idx: %i", char, char, idx)
-		// }
 	}
 }
 
@@ -233,16 +186,12 @@ make_parser_iterator :: proc(content: string) -> ParserIterator {
 
 parser_collect_until :: proc(parser: ^ParserIterator, until_char: u8) -> (string, bool) {
 	end_pos := parser.current_pos + 1
-	// fmt.print("\n")
 	for char, idx in parser_iterator(parser) {
-		// fmt.printf("%c", char)
 		if char == until_char {
 			start_pos := idx + 1
-			// fmt.print("found\n")
 			return parser.content[start_pos:end_pos], true
 		}
 	}
-	// fmt.print("not_fount\n")
 
 	return {}, false
 }
