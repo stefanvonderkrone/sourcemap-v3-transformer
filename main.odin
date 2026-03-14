@@ -1,5 +1,6 @@
 package smv3t
 
+import "core:container/intrusive/list"
 import "core:encoding/json"
 import "core:fmt"
 import "core:mem"
@@ -9,6 +10,9 @@ import "core:slice"
 import "core:strconv"
 import "core:strings"
 import "core:testing"
+import "core:text/regex"
+
+CHROME_STACK_TRACE := #load("stacktraces/chromium-dev.txt", string)
 
 main :: proc() {
 	num_args := len(os.args)
@@ -19,6 +23,8 @@ main :: proc() {
 	case "translate":
 		cmd_translate(os.args[2:])
 	}
+
+	parse_stack_trace_chromium(CHROME_STACK_TRACE)
 }
 
 cmd_print_help :: proc(cmd: Command) {
@@ -101,6 +107,183 @@ Mapping :: struct {
 	original_line:    i32,
 	original_column:  i32,
 	name_index:       i32,
+}
+
+// * skip whitespace, `at` and whitespace
+// * optionally capture identifier, skip whitspace and opening bracket
+// * skip everything up until single `/`
+// * capture pathname up until first `:`
+// * capture line number up until next `:`
+// * capture column number up until end of line or closing bracket
+parse_stack_trace :: proc(stack_trace: string) {
+	lines := strings.split(stack_trace, "\n")
+	chrome_re, chrome_re_error := regex.create(
+		"^\\s*at\\s*(?:([^\\s]+)\\s*\\()?.*(?:\\w?:\\/\\/[^/]+)(.*):(\\d+):(\\d+)\\)?$", // "/^\\s*at (.*?) ?\\(((?:file|https?|blob|chrome-extension|native|eval|webpack|rsc|<anonymous>|\\/|[a-z]:\\\\|\\\\\\\\).*?)(?::(\\d+))?(?::(\\d+))?\\)?\\s*$/i",
+	)
+	if chrome_re_error != nil {
+		fmt.printfln("could not create chrome_re: %v", chrome_re_error)
+	}
+	for line in lines {
+		fmt.printfln("line: %s", line)
+		capture, ok := regex.match_and_allocate_capture(chrome_re, line)
+		if ok {
+			fmt.printfln("group: %v", capture.groups)
+		}
+	}
+}
+
+parse_stack_trace_chromium :: proc(stack_trace: string) {
+	lines := strings.split(stack_trace, "\n")
+	for stack_frame in lines {
+		if len(stack_frame) == 0 {
+			continue
+		}
+		fmt.println("")
+		fmt.printfln("line: %s", stack_frame)
+		parser := make_parser_iterator(stack_frame)
+
+		if parser_current_char(&parser) == ')' {
+			parser_skip_n(&parser, 1)
+		}
+
+		// parse column
+		col_str, col_str_ok := parser_collect_until(&parser, ':')
+		if !col_str_ok {
+			continue
+		}
+		col, col_ok := strconv.parse_uint(col_str, 10)
+		if !col_ok {
+			continue
+		}
+		fmt.printfln("col: %i", col)
+
+		// parse line
+		line_str, line_str_ok := parser_collect_until(&parser, ':')
+		if !line_str_ok {
+			// is it possible, that a stack trace would only contain the line without a column?
+			continue
+		}
+		line, line_ok := strconv.parse_uint(line_str, 10)
+		if !line_ok {
+			continue
+		}
+		fmt.printfln("line: %i", line)
+
+		// parse path
+		end_pos := parser_current_position(&parser)
+		start_pos := end_pos
+
+		last_char := parser_current_char(&parser)
+		last_slash_pos := -1
+		for char, idx in parser_iterator(&parser) {
+			start_pos = idx
+			if char == '(' || char == ' ' {
+				break
+			}
+			// fmt.printfln("char: %c, p_char: %c", char, parser_char_at(&parser, idx - 1))
+			if char == '/' && parser_char_at(&parser, idx - 1) == '/' {
+				// fmt.printfln("found // at %i", idx)
+				start_pos = last_slash_pos
+				break
+			}
+			if char == '/' {
+				// fmt.printfln("found / at %i", idx)
+				last_slash_pos = idx
+			}
+
+			last_char = char
+
+		}
+		// for {
+		// 	start_pos = parser_current_position(&parser)
+		// 	path_segment, path_segment_ok := parser_collect_until(&parser, '/')
+		// 	if !path_segment_ok {
+		// 		break
+		// 	}
+		// 	if parser_current_char(&parser) == '/' {
+		// 		break
+		// 	}
+		// 	if parser_current_position(&parser) == 0 {
+		// 		break
+		// 	}
+		// }
+
+		path := stack_frame[start_pos + 1:end_pos + 1]
+		fmt.printfln("path: %s", path)
+
+		// parse path
+		// fmt.printfln("current_char: %c", parser_current_char(&parser))
+
+		// for char, idx in parser_iterator(&parser) {
+		// 	fmt.printfln("char: %c, char_code: %i, idx: %i", char, char, idx)
+		// }
+	}
+}
+
+ParserIterator :: struct {
+	length:      int,
+	current_pos: int,
+	content:     string,
+}
+
+make_parser_iterator :: proc(content: string) -> ParserIterator {
+	length := len(content)
+	return {length = length, content = content, current_pos = length - 1}
+}
+
+parser_collect_until :: proc(parser: ^ParserIterator, until_char: u8) -> (string, bool) {
+	end_pos := parser.current_pos + 1
+	// fmt.print("\n")
+	for char, idx in parser_iterator(parser) {
+		// fmt.printf("%c", char)
+		if char == until_char {
+			start_pos := idx + 1
+			// fmt.print("found\n")
+			return parser.content[start_pos:end_pos], true
+		}
+	}
+	// fmt.print("not_fount\n")
+
+	return {}, false
+}
+
+parser_skip_n :: proc(parser: ^ParserIterator, n: int) {
+	parser.current_pos -= n
+}
+
+parser_current_char :: proc(parser: ^ParserIterator) -> u8 {
+	if parser.length > 0 && parser.current_pos >= 0 {
+		return parser.content[parser.current_pos]
+	}
+	return 0
+}
+
+parser_char_at :: proc(parser: ^ParserIterator, pos: int) -> u8 {
+	if pos >= 0 && pos < parser.length {
+		return parser.content[pos]
+	}
+	return 0
+}
+
+parser_preceeding_char :: proc(parser: ^ParserIterator) -> u8 {
+	if parser.length > 0 && parser.current_pos >= 1 {
+		return parser.content[parser.current_pos - 1]
+	}
+	return 0
+}
+
+parser_current_position :: proc(parser: ^ParserIterator) -> int {
+	return parser.current_pos
+}
+
+parser_iterator :: proc(parser: ^ParserIterator) -> (val: u8, idx: int, cond: bool) {
+	cond = parser.current_pos >= 0
+	idx = parser.current_pos
+	if parser.current_pos >= 0 {
+		val = parser.content[idx]
+	}
+	parser.current_pos -= 1
+	return
 }
 
 translate_mapping :: proc(source_map: SourceMapV3, line: i32, col: i32) -> (^Mapping, bool) {
@@ -186,11 +369,6 @@ json_read_sourcemap :: proc(data: []u8, source_map: ^SourceMapV3, allocator := c
 			return
 		}
 		decoded_mappings := mappings_decode(mappings, allocator)
-		// decoded := decoded_mappings[len(decoded_mappings) - 1]
-		// for d in decoded.mappings {
-		// 	fmt.printfln("%v", d)
-		// }
-		// fmt.printfln("%i", len(decoded.mappings))
 		source_map.mappings = decoded_mappings
 	}
 
@@ -351,71 +529,6 @@ mappings_decode :: proc(mappings: string, allocator := context.allocator) -> []M
 
 		mapping_line.mappings = decoded_segments[:]
 		result[line_index] = mapping_line
-	}
-
-	return result[:]
-}
-
-// a clone of `mappings_decode` but without string splitting
-mappings_decode_v2 :: proc(mappings: string, allocator := context.allocator) -> [][][]i32 {
-	result := make([dynamic][][]i32, 0, 0, allocator)
-
-	current := 0
-	mapping: string
-	generated_column: i32
-	source_index: i32
-	original_line: i32
-	original_column: i32
-	names_index: i32
-
-	decoded_segments := make([dynamic][]i32, 0, 0, allocator)
-
-	for char, index in mappings {
-		if char == ',' || char == ';' {
-			mapping = mappings[current:index]
-			current = index + 1
-
-			if len(mapping) > 0 {
-				values := vlq_decode(mapping, allocator)
-				num_values := len(values)
-
-				if num_values >= 1 {
-					generated_column += values[0]
-				}
-
-				if num_values >= 4 {
-					source_index += values[1]
-					original_line += values[2]
-					original_column += values[3]
-				}
-
-				if num_values == 5 {
-					names_index += values[4]
-				}
-
-				decoded_segment := make([dynamic]i32, num_values, num_values, allocator)
-				if num_values >= 1 {
-					decoded_segment[0] = generated_column
-				}
-
-				if num_values >= 4 {
-					decoded_segment[1] = source_index
-					decoded_segment[2] = original_line
-					decoded_segment[3] = original_column
-				}
-
-				if num_values == 5 {
-					decoded_segment[4] = names_index
-				}
-
-				append(&decoded_segments, decoded_segment[:])
-			}
-		}
-
-		if char == ';' {
-			append(&result, decoded_segments[:])
-			decoded_segments := make([dynamic][]i32, 0, 0, allocator)
-		}
 	}
 
 	return result[:]
