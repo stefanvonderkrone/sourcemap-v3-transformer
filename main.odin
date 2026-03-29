@@ -13,7 +13,7 @@ import "core:testing"
 import "core:text/regex"
 
 // STACK_TRACE := #load("stacktraces/safari-build.txt", string)
-// STACK_TRACE := #load("stacktraces/safari-dev.txt", string)
+STACK_TRACE := #load("stacktraces/safari-dev.txt", string)
 // STACK_TRACE := #load("stacktraces/chromium-build.txt", string)
 // STACK_TRACE := #load("stacktraces/chromium-dev.txt", string)
 // STACK_TRACE := #load("stacktraces/firefox-build-txt", string)
@@ -22,7 +22,7 @@ import "core:text/regex"
 // STACK_TRACE := #load("stacktraces/zen-dev.txt", string)
 // STACK_TRACE := #load("stacktraces/node.txt", string)
 // STACK_TRACE := #load("stacktraces/bun.txt", string)
-STACK_TRACE := #load("stacktraces/deno.txt", string)
+// STACK_TRACE := #load("stacktraces/deno.txt", string)
 
 main :: proc() {
 	num_args := len(os.args)
@@ -34,7 +34,7 @@ main :: proc() {
 		cmd_translate(os.args[2:])
 	}
 
-	parse_stack_trace_chromium(STACK_TRACE)
+	parse_stack_trace(STACK_TRACE)
 }
 
 cmd_print_help :: proc(cmd: Command) {
@@ -117,228 +117,6 @@ Mapping :: struct {
 	original_line:    i32,
 	original_column:  i32,
 	name_index:       i32,
-}
-
-parse_stack_trace_chromium :: proc(stack_trace: string) {
-	lines := strings.split(stack_trace, "\n")
-	for stack_frame in lines {
-		if len(stack_frame) == 0 {
-			continue
-		}
-		fmt.println("")
-		fmt.printfln("stack_frame: \n%s", stack_frame)
-		parser := make_parser_iterator(stack_frame)
-
-		has_closing_parenthesis := false
-		if parser_current_char(&parser) == ')' {
-			// v8/bun based stackframe with name
-			parser_skip_n(&parser, 1)
-			has_closing_parenthesis = true
-		}
-
-		// parse column
-		col_str, col_str_ok := parser_collect_digits(&parser)
-		if !col_str_ok {
-			continue
-		}
-		col, col_ok := strconv.parse_uint(col_str, 10)
-		if !col_ok {
-			continue
-		}
-		fmt.printfln("col: '%i'", col)
-
-		// parse line
-		line_str, line_str_ok := parser_collect_digits(&parser)
-		if !line_str_ok {
-			// TODO: bun internal function
-			//       at loadAndEvaluateModule (2:1)
-			continue
-		}
-		line, line_ok := strconv.parse_uint(line_str, 10)
-		if !line_ok {
-			continue
-		}
-		fmt.printfln("line: '%i'", line)
-
-		last_char := parser_current_char(&parser)
-
-		if (last_char != ' ') {
-			// parse path
-			end_pos := parser_current_position(&parser)
-			start_pos := end_pos
-
-			// TODO: bun internal module -> last_char points to last char of name
-
-			last_slash_pos := -1
-			for char, idx in parser_iterator(&parser) {
-				start_pos = idx
-				if char == '(' || char == ' ' || char == '@' {
-					// end of path
-					break
-				}
-				if char == '/' && parser_char_at(&parser, idx - 1) == '/' {
-					if parser_char_at(&parser, idx - 2) == '/' {
-						// local file urls
-						start_pos -= 1
-						break
-					}
-					// http urls
-					start_pos = last_slash_pos - 1
-					break
-				}
-				if char == '/' {
-					last_slash_pos = idx
-				}
-
-				last_char = char
-
-			}
-
-			path := stack_frame[start_pos + 1:end_pos + 1]
-			fmt.printfln("path: '%s'", path)
-		} else {
-			// move one char ahead
-			// parser_iterator(&parser)
-		}
-
-		// skip whitespace
-		parser_skip_char(&parser, ' ')
-
-		fmt.printfln(
-			"char: \"%c\" %i",
-			parser_current_char(&parser),
-			parser_current_position(&parser),
-		)
-		// fmt.printfln("rest: '%s'", stack_frame[:parser_current_position(&parser) + 1])
-
-		// parse name
-		// skip until ' ' || '@'
-		fmt.printfln("rest: '%s'", stack_frame[:parser_current_position(&parser) + 1])
-		name: string
-		if has_closing_parenthesis {
-			fmt.printfln("cur char: '%c':", parser_current_char(&parser))
-			for char in parser_iterator(&parser) {
-				if char == '(' {
-					break
-				}
-			}
-			parser_skip_n(&parser, 1)
-			name_t, name_ok := parser_collect_until(&parser, ' ')
-			if name_ok {
-				name = name_t
-			}
-			// no name
-		} else {
-			for _ in parser_iterator(&parser) {
-				if parser_current_char(&parser) == '@' {
-					break
-				}
-			}
-			if parser_current_position(&parser) >= 0 {
-				name = stack_frame[:parser_current_position(&parser)]
-			}
-			// no name
-		}
-
-		fmt.printfln("name: '%s'", name)
-
-	}
-}
-
-ParserIterator :: struct {
-	length:      int,
-	current_pos: int,
-	content:     string,
-}
-
-make_parser_iterator :: proc(content: string) -> ParserIterator {
-	length := len(content)
-	return {length = length, content = content, current_pos = length - 1}
-}
-
-parser_collect_until :: proc(parser: ^ParserIterator, until_char: u8) -> (string, bool) {
-	end_pos := parser.current_pos + 1
-	for char, idx in parser_iterator(parser) {
-		if char == until_char {
-			start_pos := idx + 1
-			return parser.content[start_pos:end_pos], true
-		}
-	}
-
-	return {}, false
-}
-
-is_digit :: proc(char: u8) -> bool {
-	return char >= 48 && char <= 57
-}
-
-parser_collect_digits :: proc(parser: ^ParserIterator) -> (string, bool) {
-	if !is_digit(parser_current_char(parser)) {
-		return {}, false
-	}
-	end_pos := parser.current_pos + 1
-	for char, idx in parser_iterator(parser) {
-		if !is_digit(char) {
-			start_pos := idx + 1
-			return parser.content[start_pos:end_pos], true
-		}
-	}
-	return {}, false
-}
-
-parser_skip_char :: proc(parser: ^ParserIterator, char: u8) {
-	for {
-		if parser_current_char(parser) != char {
-			return
-		}
-		parser_iterator(parser)
-	}
-}
-
-parser_skip_n :: proc(parser: ^ParserIterator, n: int) {
-	new_pos := parser.current_pos - n
-	if new_pos < 0 {
-		parser.current_pos = 0
-	} else if new_pos >= parser.length {
-		parser.current_pos = parser.length - 1
-	} else {
-		parser.current_pos = new_pos
-	}
-}
-
-parser_current_char :: proc(parser: ^ParserIterator) -> u8 {
-	if parser.length > 0 && parser.current_pos >= 0 {
-		return parser.content[parser.current_pos]
-	}
-	return 0
-}
-
-parser_char_at :: proc(parser: ^ParserIterator, pos: int) -> u8 {
-	if pos >= 0 && pos < parser.length {
-		return parser.content[pos]
-	}
-	return 0
-}
-
-parser_preceeding_char :: proc(parser: ^ParserIterator) -> u8 {
-	if parser.length > 0 && parser.current_pos >= 1 {
-		return parser.content[parser.current_pos - 1]
-	}
-	return 0
-}
-
-parser_current_position :: proc(parser: ^ParserIterator) -> int {
-	return parser.current_pos
-}
-
-parser_iterator :: proc(parser: ^ParserIterator) -> (val: u8, idx: int, cond: bool) {
-	cond = parser.current_pos >= 0
-	idx = parser.current_pos
-	if parser.current_pos >= 0 {
-		val = parser.content[idx]
-	}
-	parser.current_pos -= 1
-	return
 }
 
 translate_mapping :: proc(source_map: SourceMapV3, line: i32, col: i32) -> (^Mapping, bool) {
