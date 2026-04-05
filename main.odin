@@ -1,44 +1,34 @@
 package smv3t
 
-import "core:container/intrusive/list"
+import "core:bufio"
 import "core:encoding/json"
 import "core:fmt"
-import "core:mem"
 import vmem "core:mem/virtual"
 import "core:os"
 import "core:slice"
 import "core:strconv"
 import "core:strings"
 import "core:testing"
-import "core:text/regex"
-
-// STACK_TRACE := #load("stacktraces/safari-build.txt", string)
-STACK_TRACE := #load("stacktraces/safari-dev.txt", string)
-// STACK_TRACE := #load("stacktraces/chromium-build.txt", string)
-// STACK_TRACE := #load("stacktraces/chromium-dev.txt", string)
-// STACK_TRACE := #load("stacktraces/firefox-build-txt", string)
-// STACK_TRACE := #load("stacktraces/firefox-dev.txt", string)
-// STACK_TRACE := #load("stacktraces/zen-build.txt", string)
-// STACK_TRACE := #load("stacktraces/zen-dev.txt", string)
-// STACK_TRACE := #load("stacktraces/node.txt", string)
-// STACK_TRACE := #load("stacktraces/bun.txt", string)
-// STACK_TRACE := #load("stacktraces/deno.txt", string)
 
 main :: proc() {
 	num_args := len(os.args)
 	command := num_args > 1 ? os.args[1] : "help"
 	switch command {
-	case "help":
-		cmd_print_help(.Help)
+	case "parse":
+		cmd_parse(os.args[2:])
 	case "translate":
 		cmd_translate(os.args[2:])
+	case "help":
+		fallthrough
+	case:
+		cmd_print_help(.Help)
 	}
-
-	parse_stack_trace(STACK_TRACE)
 }
 
 cmd_print_help :: proc(cmd: Command) {
 	switch cmd {
+	case .Parse:
+		fmt.println("print help parse")
 	case .Translate:
 		fmt.println("print help translate")
 	case .Help:
@@ -90,9 +80,41 @@ cmd_translate :: proc(args: []string) {
 	}
 }
 
+cmd_parse :: proc(args: []string) {
+	num_args := len(args)
+	handle := os.stdin
+	if num_args > 0 {
+		file_name := args[0]
+		h, h_error := os.open(file_name)
+		if h_error != nil {
+			fmt.eprintfln("%e", h_error)
+			return
+		}
+		handle = h
+	}
+	buffer: [4096]byte
+	n, read_error := os.read(handle, buffer[:])
+	if read_error != nil {
+		fmt.eprintfln("%e", read_error)
+	}
+	if n == 0 {
+		return
+	}
+	contents := string(buffer[:n])
+	fmt.printfln("%s", contents)
+
+	stack_traces := parse_stack_trace(string(contents))
+	json_out, json_error := json.marshal(stack_traces)
+	if json_error != nil {
+		fmt.eprintfln("%e", json_error)
+	}
+	fmt.printfln("%s", json_out)
+}
+
 Command :: enum {
 	Help,
 	Translate,
+	Parse,
 }
 
 SourceMapV3 :: struct {

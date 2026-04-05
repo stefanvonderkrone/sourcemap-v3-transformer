@@ -1,0 +1,9 @@
+error: Uncaught (in promise) Error: test
+  throw new Error("test");
+        ^
+    at d (file:///Volumes/Work/Github/sourcemaps-v3-transformer/error.js:14:9)
+    at c (file:///Volumes/Work/Github/sourcemaps-v3-transformer/error.js:10:3)
+    at b (file:///Volumes/Work/Github/sourcemaps-v3-transformer/error.js:6:3)
+    at a (file:///Volumes/Work/Github/sourcemaps-v3-transformer/error.js:2:3)
+    at file:///Volumes/Work/Github/sourcemaps-v3-transformer/error.js:17:1
+

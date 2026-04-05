@@ -1,0 +1,7 @@
+error: test
+      at d (/Volumes/Work/Github/sourcemaps-v3-transformer/error.js:14:13)
+      at c (/Volumes/Work/Github/sourcemaps-v3-transformer/error.js:10:3)
+      at b (/Volumes/Work/Github/sourcemaps-v3-transformer/error.js:6:3)
+      at a (/Volumes/Work/Github/sourcemaps-v3-transformer/error.js:2:3)
+      at /Volumes/Work/Github/sourcemaps-v3-transformer/error.js:17:1
+      at loadAndEvaluateModule (2:1)

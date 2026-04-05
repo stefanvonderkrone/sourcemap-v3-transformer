@@ -1,0 +1,13 @@
+@http://localhost:5173/src/App.tsx:11:28
+react_stack_bottom_frame@http://localhost:5173/node_modules/.vite/deps/react-dom_client.js:18565:26
+runWithFiberInDEV@http://localhost:5173/node_modules/.vite/deps/react-dom_client.js:997:23
+commitHookEffectListMount@http://localhost:5173/node_modules/.vite/deps/react-dom_client.js:9409:180
+commitHookPassiveMountEffects@http://localhost:5173/node_modules/.vite/deps/react-dom_client.js:9463:85
+commitPassiveMountOnFiber@http://localhost:5173/node_modules/.vite/deps/react-dom_client.js:11038:58
+recursivelyTraversePassiveMountEffects@http://localhost:5173/node_modules/.vite/deps/react-dom_client.js:11008:38
+commitPassiveMountOnFiber@http://localhost:5173/node_modules/.vite/deps/react-dom_client.js:11199:51
+recursivelyTraversePassiveMountEffects@http://localhost:5173/node_modules/.vite/deps/react-dom_client.js:11008:38
+commitPassiveMountOnFiber@http://localhost:5173/node_modules/.vite/deps/react-dom_client.js:11064:51
+flushPassiveEffects@http://localhost:5173/node_modules/.vite/deps/react-dom_client.js:13148:36
+@http://localhost:5173/node_modules/.vite/deps/react-dom_client.js:12774:32
+performWorkUntilDeadline@http://localhost:5173/node_modules/.vite/deps/react-dom_client.js:34:58

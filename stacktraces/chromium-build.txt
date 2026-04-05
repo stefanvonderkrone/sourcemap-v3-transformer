@@ -1,0 +1,8 @@
+Error: test
+    at U (http://localhost:4173/assets/index-D6p3_k4u.js:9:37404)
+    at Hy (http://localhost:4173/assets/index-D6p3_k4u.js:8:127054)
+    at http://localhost:4173/assets/index-D6p3_k4u.js:8:132070
+    at Yi (http://localhost:4173/assets/index-D6p3_k4u.js:8:15121)
+    at Xc (http://localhost:4173/assets/index-D6p3_k4u.js:8:128287)
+    at Pc (http://localhost:4173/assets/index-D6p3_k4u.js:9:28539)
+    at j1 (http://localhost:4173/assets/index-D6p3_k4u.js:9:28361)

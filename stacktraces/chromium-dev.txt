@@ -1,0 +1,11 @@
+Error: test
+    at App.tsx:10:19
+    at Object.react_stack_bottom_frame (react-dom-client.development.js:25989:20)
+    at runWithFiberInDEV (react-dom-client.development.js:871:30)
+    at commitHookEffectListMount (react-dom-client.development.js:13249:29)
+    at commitHookPassiveMountEffects (react-dom-client.development.js:13336:11)
+    at commitPassiveMountOnFiber (react-dom-client.development.js:15484:13)
+    at recursivelyTraversePassiveMountEffects (react-dom-client.development.js:15439:11)
+    at commitPassiveMountOnFiber (react-dom-client.development.js:15718:11)
+    at recursivelyTraversePassiveMountEffects (react-dom-client.development.js:15439:11)
+    at commitPassiveMountOnFiber (react-dom-client.development.js:15519:11)

@@ -1,16 +1,22 @@
 package smv3t
 
-import "core:container/intrusive/list"
-import "core:encoding/json"
 import "core:fmt"
-import "core:mem"
-import vmem "core:mem/virtual"
-import "core:os"
 import "core:slice"
 import "core:strconv"
 import "core:strings"
 import "core:testing"
-import "core:text/regex"
+
+// STACK_TRACE := #load("stacktraces/safari-build.txt", string)
+// STACK_TRACE := #load("stacktraces/safari-dev.txt", string)
+// STACK_TRACE := #load("stacktraces/chromium-build.txt", string)
+STACK_TRACE := #load("stacktraces/chromium-dev.txt", string)
+// STACK_TRACE := #load("stacktraces/firefox-build.txt", string)
+// STACK_TRACE := #load("stacktraces/firefox-dev.txt", string)
+// STACK_TRACE := #load("stacktraces/zen-build.txt", string)
+// STACK_TRACE := #load("stacktraces/zen-dev.txt", string)
+// STACK_TRACE := #load("stacktraces/node.txt", string)
+// STACK_TRACE := #load("stacktraces/bun.txt", string)
+// STACK_TRACE := #load("stacktraces/deno.txt", string)
 
 StackFrame :: struct {
 	line:     uint,
@@ -19,15 +25,23 @@ StackFrame :: struct {
 	name:     string,
 }
 
-parse_stack_trace :: proc(stack_trace: string) -> []StackFrame {
-	lines := strings.split(stack_trace, "\n")
-	stack_frames := make([dynamic]StackFrame, 0, len(lines))
+/**
+ * TODO: rewrite with proper tokenizing, lexing, parsing
+ * and a formalized way of interpreting stack frames
+ **/
+parse_stack_trace :: proc(
+	stack_trace: string,
+	allocator := context.allocator,
+	temp_allocator := context.temp_allocator,
+) -> []StackFrame {
+	lines := strings.split(stack_trace, "\n", temp_allocator)
+	stack_frames := make([dynamic]StackFrame, 0, len(lines), allocator)
 	for stack_frame_line in lines {
 		if len(stack_frame_line) == 0 {
 			continue
 		}
-		fmt.println("")
-		fmt.printfln("stack_frame_line: \n%s", stack_frame_line)
+		// fmt.println("")
+		// fmt.printfln("stack_frame_line: \n%s", stack_frame_line)
 		parser := make_parser_iterator(stack_frame_line)
 
 		has_closing_parenthesis := false
@@ -46,7 +60,7 @@ parse_stack_trace :: proc(stack_trace: string) -> []StackFrame {
 		if !col_ok {
 			continue
 		}
-		fmt.printfln("col: '%i'", col)
+		// fmt.printfln("col: '%i'", col)
 
 		// parse line
 		line_str, line_str_ok := parser_collect_digits(&parser)
@@ -59,7 +73,7 @@ parse_stack_trace :: proc(stack_trace: string) -> []StackFrame {
 		if !line_ok {
 			continue
 		}
-		fmt.printfln("line: '%i'", line)
+		// fmt.printfln("line: '%i'", line)
 
 		last_char := parser_current_char(&parser)
 
@@ -74,6 +88,10 @@ parse_stack_trace :: proc(stack_trace: string) -> []StackFrame {
 			last_slash_pos := -1
 			for char, idx in parser_iterator(&parser) {
 				start_pos = idx
+				if char == '?' {
+					end_pos = idx - 1
+					continue
+				}
 				if char == '(' || char == ' ' || char == '@' {
 					// end of path
 					break
@@ -82,10 +100,18 @@ parse_stack_trace :: proc(stack_trace: string) -> []StackFrame {
 					if parser_char_at(&parser, idx - 2) == '/' {
 						// local file urls
 						start_pos -= 1
+						// skip rest until whitespace
+						if has_closing_parenthesis {
+							parser_skip_until(&parser, ' ')
+						}
 						break
 					}
 					// http urls
 					start_pos = last_slash_pos - 1
+					// skip rest until whitespace
+					if has_closing_parenthesis {
+						parser_skip_until(&parser, ' ')
+					}
 					break
 				}
 				if char == '/' {
@@ -97,38 +123,45 @@ parse_stack_trace :: proc(stack_trace: string) -> []StackFrame {
 			}
 
 			path = stack_frame_line[start_pos + 1:end_pos + 1]
-			fmt.printfln("path: '%s'", path)
-		} else {
-			// move one char ahead
-			// parser_iterator(&parser)
+			// fmt.printfln("path: '%s', start_pos: %i, end_pos: %i", path, start_pos, end_pos)
 		}
 
 		// skip whitespace
 		parser_skip_char(&parser, ' ')
 
-		fmt.printfln(
-			"char: \"%c\" %i",
-			parser_current_char(&parser),
-			parser_current_position(&parser),
-		)
+		// fmt.printfln(
+		// 	"char: \"%c\" %i",
+		// 	parser_current_char(&parser),
+		// 	parser_current_position(&parser),
+		// )
 		// fmt.printfln("rest: '%s'", stack_frame_line[:parser_current_position(&parser) + 1])
 
 		// parse name
 		// skip until ' ' || '@'
-		fmt.printfln("rest: '%s'", stack_frame_line[:parser_current_position(&parser) + 1])
+		// fmt.printfln("rest: '%s'", stack_frame_line[:parser_current_position(&parser) + 1])
 		name: string
 		if has_closing_parenthesis {
-			fmt.printfln("cur char: '%c':", parser_current_char(&parser))
-			for char in parser_iterator(&parser) {
-				if char == '(' {
+			// parser_skip_until(&parser, ' ')
+			// fmt.printfln(
+			// 	"cur char: '%c', cur pos: %i",
+			// 	parser_current_char(&parser),
+			// 	parser_current_position(&parser),
+			// )
+			end_pos := parser_current_position(&parser)
+			start_pos := end_pos
+			for char, idx in parser_iterator(&parser) {
+				// we need space for " at "
+				if idx < 4 {
+					break
+				}
+				// find " at " before the current position
+				if stack_frame_line[idx - 4:idx] == " at " {
+					start_pos = idx
 					break
 				}
 			}
-			parser_skip_n(&parser, 1)
-			name_t, name_ok := parser_collect_until(&parser, ' ')
-			if name_ok {
-				name = name_t
-			}
+			name = stack_frame_line[start_pos:end_pos + 1]
+			// fmt.printfln("start_pos: %i, end_pos: %i, name: '%s'", start_pos, end_pos, name)
 			// no name
 		} else {
 			for _ in parser_iterator(&parser) {
@@ -142,12 +175,12 @@ parse_stack_trace :: proc(stack_trace: string) -> []StackFrame {
 			// no name
 		}
 
-		fmt.printfln("name: '%s'", name)
+		// fmt.printfln("name: '%s'", name)
 
 		append(&stack_frames, StackFrame{line = line, col = col, pathname = path, name = name})
 	}
 
-	fmt.printfln("%v", stack_frames)
+	// fmt.printfln("%v", stack_frames)
 
 	return stack_frames[:]
 }
@@ -202,6 +235,15 @@ parser_skip_char :: proc(parser: ^ParserIterator, char: u8) {
 	}
 }
 
+parser_skip_until :: proc(parser: ^ParserIterator, char: u8) {
+	for {
+		if parser_current_char(parser) == char || parser_current_position(parser) == 0 {
+			return
+		}
+		parser_iterator(parser)
+	}
+}
+
 parser_skip_n :: proc(parser: ^ParserIterator, n: int) {
 	new_pos := parser.current_pos - n
 	if new_pos < 0 {
@@ -249,7 +291,7 @@ parser_iterator :: proc(parser: ^ParserIterator) -> (val: u8, idx: int, cond: bo
 }
 
 @(test)
-text_parse_stack_trace_safari_build :: proc(t: ^testing.T) {
+test_parse_stack_trace_safari_build :: proc(t: ^testing.T) {
 	test_frames := []StackFrame {
 		StackFrame{line = 9, col = 37413, pathname = "/assets/index-D6p3_k4u.js", name = "U"},
 		StackFrame{line = 8, col = 127055, pathname = "/assets/index-D6p3_k4u.js", name = "Hy"},
@@ -261,6 +303,7 @@ text_parse_stack_trace_safari_build :: proc(t: ^testing.T) {
 	}
 	stack_trace := #load("stacktraces/safari-build.txt", string)
 	stack_frames := parse_stack_trace(stack_trace)
+	defer delete(stack_frames)
 	if !slice.equal(stack_frames, test_frames) {
 		testing.fail(t)
 	}
@@ -345,6 +388,543 @@ test_parse_stack_trace_safari_dev :: proc(t: ^testing.T) {
 	}
 	stack_trace := #load("stacktraces/safari-dev.txt", string)
 	stack_frames := parse_stack_trace(stack_trace)
+	defer delete(stack_frames)
+	if !slice.equal(stack_frames, test_frames) {
+		testing.fail(t)
+	}
+}
+
+@(test)
+test_parse_stack_trace_chromium_build :: proc(t: ^testing.T) {
+	test_frames := []StackFrame {
+		StackFrame{line = 9, col = 37404, pathname = "/assets/index-D6p3_k4u.js", name = "U"},
+		StackFrame{line = 8, col = 127054, pathname = "/assets/index-D6p3_k4u.js", name = "Hy"},
+		StackFrame{line = 8, col = 132070, pathname = "/assets/index-D6p3_k4u.js", name = ""},
+		StackFrame{line = 8, col = 15121, pathname = "/assets/index-D6p3_k4u.js", name = "Yi"},
+		StackFrame{line = 8, col = 128287, pathname = "/assets/index-D6p3_k4u.js", name = "Xc"},
+		StackFrame{line = 9, col = 28539, pathname = "/assets/index-D6p3_k4u.js", name = "Pc"},
+		StackFrame{line = 9, col = 28361, pathname = "/assets/index-D6p3_k4u.js", name = "j1"},
+	}
+	stack_trace := #load("stacktraces/chromium-build.txt", string)
+	stack_frames := parse_stack_trace(stack_trace)
+	defer delete(stack_frames)
+	if !slice.equal(stack_frames, test_frames) {
+		testing.fail(t)
+	}
+}
+
+@(test)
+test_parse_stack_trace_chromium_dev :: proc(t: ^testing.T) {
+	test_frames := []StackFrame {
+		StackFrame{line = 10, col = 19, pathname = "App.tsx", name = ""},
+		StackFrame {
+			line = 25989,
+			col = 20,
+			pathname = "react-dom-client.development.js",
+			name = "Object.react_stack_bottom_frame",
+		},
+		StackFrame {
+			line = 871,
+			col = 30,
+			pathname = "react-dom-client.development.js",
+			name = "runWithFiberInDEV",
+		},
+		StackFrame {
+			line = 13249,
+			col = 29,
+			pathname = "react-dom-client.development.js",
+			name = "commitHookEffectListMount",
+		},
+		StackFrame {
+			line = 13336,
+			col = 11,
+			pathname = "react-dom-client.development.js",
+			name = "commitHookPassiveMountEffects",
+		},
+		StackFrame {
+			line = 15484,
+			col = 13,
+			pathname = "react-dom-client.development.js",
+			name = "commitPassiveMountOnFiber",
+		},
+		StackFrame {
+			line = 15439,
+			col = 11,
+			pathname = "react-dom-client.development.js",
+			name = "recursivelyTraversePassiveMountEffects",
+		},
+		StackFrame {
+			line = 15718,
+			col = 11,
+			pathname = "react-dom-client.development.js",
+			name = "commitPassiveMountOnFiber",
+		},
+		StackFrame {
+			line = 15439,
+			col = 11,
+			pathname = "react-dom-client.development.js",
+			name = "recursivelyTraversePassiveMountEffects",
+		},
+		StackFrame {
+			line = 15519,
+			col = 11,
+			pathname = "react-dom-client.development.js",
+			name = "commitPassiveMountOnFiber",
+		},
+	}
+	stack_trace := #load("stacktraces/chromium-dev.txt", string)
+	stack_frames := parse_stack_trace(stack_trace)
+	defer delete(stack_frames)
+	if !slice.equal(stack_frames, test_frames) {
+		testing.fail(t)
+	}
+}
+
+@(test)
+test_parse_stack_trace_node :: proc(t: ^testing.T) {
+	test_frames := []StackFrame {
+		StackFrame {
+			line = 14,
+			col = 9,
+			pathname = "/Volumes/Work/Github/sourcemaps-v3-transformer/error.js",
+			name = "d",
+		},
+		StackFrame {
+			line = 10,
+			col = 3,
+			pathname = "/Volumes/Work/Github/sourcemaps-v3-transformer/error.js",
+			name = "c",
+		},
+		StackFrame {
+			line = 6,
+			col = 3,
+			pathname = "/Volumes/Work/Github/sourcemaps-v3-transformer/error.js",
+			name = "b",
+		},
+		StackFrame {
+			line = 2,
+			col = 3,
+			pathname = "/Volumes/Work/Github/sourcemaps-v3-transformer/error.js",
+			name = "a",
+		},
+		StackFrame {
+			line = 17,
+			col = 1,
+			pathname = "/Volumes/Work/Github/sourcemaps-v3-transformer/error.js",
+			name = "",
+		},
+		StackFrame {
+			line = 343,
+			col = 25,
+			pathname = "node:internal/modules/esm/module_job",
+			name = "ModuleJob.run",
+		},
+		StackFrame {
+			line = 665,
+			col = 26,
+			pathname = "node:internal/modules/esm/loader",
+			name = "async onImport.tracePromise.__proto__",
+		},
+		StackFrame {
+			line = 117,
+			col = 5,
+			pathname = "node:internal/modules/run_main",
+			name = "async asyncRunEntryPointWithESMLoader",
+		},
+	}
+	stack_trace := #load("stacktraces/node.txt", string)
+	stack_frames := parse_stack_trace(stack_trace)
+	defer delete(stack_frames)
+	if !slice.equal(stack_frames, test_frames) {
+		testing.fail(t)
+	}
+}
+
+@(test)
+test_parse_stack_trace_bun :: proc(t: ^testing.T) {
+	test_frames := []StackFrame {
+		StackFrame {
+			line = 14,
+			col = 13,
+			pathname = "/Volumes/Work/Github/sourcemaps-v3-transformer/error.js",
+			name = "d",
+		},
+		StackFrame {
+			line = 10,
+			col = 3,
+			pathname = "/Volumes/Work/Github/sourcemaps-v3-transformer/error.js",
+			name = "c",
+		},
+		StackFrame {
+			line = 6,
+			col = 3,
+			pathname = "/Volumes/Work/Github/sourcemaps-v3-transformer/error.js",
+			name = "b",
+		},
+		StackFrame {
+			line = 2,
+			col = 3,
+			pathname = "/Volumes/Work/Github/sourcemaps-v3-transformer/error.js",
+			name = "a",
+		},
+		StackFrame {
+			line = 17,
+			col = 1,
+			pathname = "/Volumes/Work/Github/sourcemaps-v3-transformer/error.js",
+			name = "",
+		},
+		StackFrame{line = 2, col = 1, pathname = "", name = "loadAndEvaluateModule"},
+	}
+	stack_trace := #load("stacktraces/bun.txt", string)
+	stack_frames := parse_stack_trace(stack_trace)
+	defer delete(stack_frames)
+	if !slice.equal(stack_frames, test_frames) {
+		testing.fail(t)
+	}
+}
+
+@(test)
+test_parse_stack_trace_deno :: proc(t: ^testing.T) {
+	test_frames := []StackFrame {
+		StackFrame {
+			line = 14,
+			col = 9,
+			pathname = "/Volumes/Work/Github/sourcemaps-v3-transformer/error.js",
+			name = "d",
+		},
+		StackFrame {
+			line = 10,
+			col = 3,
+			pathname = "/Volumes/Work/Github/sourcemaps-v3-transformer/error.js",
+			name = "c",
+		},
+		StackFrame {
+			line = 6,
+			col = 3,
+			pathname = "/Volumes/Work/Github/sourcemaps-v3-transformer/error.js",
+			name = "b",
+		},
+		StackFrame {
+			line = 2,
+			col = 3,
+			pathname = "/Volumes/Work/Github/sourcemaps-v3-transformer/error.js",
+			name = "a",
+		},
+		StackFrame {
+			line = 17,
+			col = 1,
+			pathname = "/Volumes/Work/Github/sourcemaps-v3-transformer/error.js",
+			name = "",
+		},
+	}
+	stack_trace := #load("stacktraces/deno.txt", string)
+	stack_frames := parse_stack_trace(stack_trace)
+	defer delete(stack_frames)
+	if !slice.equal(stack_frames, test_frames) {
+		testing.fail(t)
+	}
+}
+
+@(test)
+test_parse_stack_trace_zen_build :: proc(t: ^testing.T) {
+	test_frames := []StackFrame {
+		StackFrame{line = 9, col = 37404, pathname = "/assets/index-D6p3_k4u.js", name = "U"},
+		StackFrame{line = 8, col = 127055, pathname = "/assets/index-D6p3_k4u.js", name = "Hy"},
+		StackFrame {
+			line = 8,
+			col = 132072,
+			pathname = "/assets/index-D6p3_k4u.js",
+			name = "P1/Xc/<",
+		},
+		StackFrame{line = 8, col = 15122, pathname = "/assets/index-D6p3_k4u.js", name = "Yi"},
+		StackFrame{line = 8, col = 128289, pathname = "/assets/index-D6p3_k4u.js", name = "Xc"},
+		StackFrame{line = 9, col = 28541, pathname = "/assets/index-D6p3_k4u.js", name = "Pc"},
+		StackFrame{line = 9, col = 28361, pathname = "/assets/index-D6p3_k4u.js", name = "j1"},
+		StackFrame {
+			line = 8,
+			col = 127850,
+			pathname = "/assets/index-D6p3_k4u.js",
+			name = "EventListener.handleEvent*py",
+		},
+		StackFrame{line = 8, col = 127250, pathname = "/assets/index-D6p3_k4u.js", name = "Gc"},
+		StackFrame {
+			line = 8,
+			col = 127416,
+			pathname = "/assets/index-D6p3_k4u.js",
+			name = "P1/jc/<",
+		},
+		StackFrame{line = 8, col = 127361, pathname = "/assets/index-D6p3_k4u.js", name = "jc"},
+		StackFrame {
+			line = 9,
+			col = 36400,
+			pathname = "/assets/index-D6p3_k4u.js",
+			name = "P1/ze.createRoot",
+		},
+		StackFrame{line = 9, col = 38122, pathname = "/assets/index-D6p3_k4u.js", name = ""},
+	}
+	stack_trace := #load("stacktraces/zen-build.txt", string)
+	stack_frames := parse_stack_trace(stack_trace)
+	defer delete(stack_frames)
+	if !slice.equal(stack_frames, test_frames) {
+		testing.fail(t)
+	}
+}
+
+@(test)
+test_parse_stack_trace_firefox_build :: proc(t: ^testing.T) {
+	test_frames := []StackFrame {
+		StackFrame{line = 9, col = 37404, pathname = "/assets/index-D6p3_k4u.js", name = "U"},
+		StackFrame{line = 8, col = 127055, pathname = "/assets/index-D6p3_k4u.js", name = "Hy"},
+		StackFrame {
+			line = 8,
+			col = 132072,
+			pathname = "/assets/index-D6p3_k4u.js",
+			name = "P1/Xc/<",
+		},
+		StackFrame{line = 8, col = 15122, pathname = "/assets/index-D6p3_k4u.js", name = "Yi"},
+		StackFrame{line = 8, col = 128289, pathname = "/assets/index-D6p3_k4u.js", name = "Xc"},
+		StackFrame{line = 9, col = 28541, pathname = "/assets/index-D6p3_k4u.js", name = "Pc"},
+		StackFrame{line = 9, col = 28361, pathname = "/assets/index-D6p3_k4u.js", name = "j1"},
+	}
+	stack_trace := #load("stacktraces/firefox-build.txt", string)
+	stack_frames := parse_stack_trace(stack_trace)
+	defer delete(stack_frames)
+	if !slice.equal(stack_frames, test_frames) {
+		testing.fail(t)
+	}
+}
+
+@(test)
+test_parse_stack_trace_firefox_dev :: proc(t: ^testing.T) {
+	test_frames := []StackFrame {
+		StackFrame{line = 11, col = 19, pathname = "/src/App.tsx", name = "App/<"},
+		StackFrame {
+			line = 18565,
+			col = 20,
+			pathname = "/node_modules/.vite/deps/react-dom_client.js",
+			name = "react_stack_bottom_frame",
+		},
+		StackFrame {
+			line = 997,
+			col = 15,
+			pathname = "/node_modules/.vite/deps/react-dom_client.js",
+			name = "runWithFiberInDEV",
+		},
+		StackFrame {
+			line = 9409,
+			col = 163,
+			pathname = "/node_modules/.vite/deps/react-dom_client.js",
+			name = "commitHookEffectListMount",
+		},
+		StackFrame {
+			line = 9463,
+			col = 60,
+			pathname = "/node_modules/.vite/deps/react-dom_client.js",
+			name = "commitHookPassiveMountEffects",
+		},
+		StackFrame {
+			line = 11038,
+			col = 29,
+			pathname = "/node_modules/.vite/deps/react-dom_client.js",
+			name = "commitPassiveMountOnFiber",
+		},
+		StackFrame {
+			line = 11008,
+			col = 38,
+			pathname = "/node_modules/.vite/deps/react-dom_client.js",
+			name = "recursivelyTraversePassiveMountEffects",
+		},
+		StackFrame {
+			line = 11199,
+			col = 51,
+			pathname = "/node_modules/.vite/deps/react-dom_client.js",
+			name = "commitPassiveMountOnFiber",
+		},
+		StackFrame {
+			line = 11008,
+			col = 38,
+			pathname = "/node_modules/.vite/deps/react-dom_client.js",
+			name = "recursivelyTraversePassiveMountEffects",
+		},
+		StackFrame {
+			line = 11064,
+			col = 51,
+			pathname = "/node_modules/.vite/deps/react-dom_client.js",
+			name = "commitPassiveMountOnFiber",
+		},
+		StackFrame {
+			line = 13148,
+			col = 36,
+			pathname = "/node_modules/.vite/deps/react-dom_client.js",
+			name = "flushPassiveEffects",
+		},
+		StackFrame {
+			line = 12774,
+			col = 13,
+			pathname = "/node_modules/.vite/deps/react-dom_client.js",
+			name = "node_modules/.pnpm/react-dom@19.2.4_react@19.2.4/node_modules/react-dom/cjs/react-dom-client.development.js/commitRoot/<",
+		},
+		StackFrame {
+			line = 34,
+			col = 58,
+			pathname = "/node_modules/.vite/deps/react-dom_client.js",
+			name = "performWorkUntilDeadline",
+		},
+		StackFrame {
+			line = 154,
+			col = 9,
+			pathname = "/node_modules/.vite/deps/react-dom_client.js",
+			name = "EventHandlerNonNull*node_modules/.pnpm/scheduler@0.27.0/node_modules/scheduler/cjs/scheduler.development.js/<",
+		},
+		StackFrame {
+			line = 264,
+			col = 7,
+			pathname = "/node_modules/.vite/deps/react-dom_client.js",
+			name = "node_modules/.pnpm/scheduler@0.27.0/node_modules/scheduler/cjs/scheduler.development.js",
+		},
+		StackFrame {
+			line = 3,
+			col = 50,
+			pathname = "/node_modules/.vite/deps/chunk-FOAMPUX3.js",
+			name = "__require",
+		},
+		StackFrame {
+			line = 275,
+			col = 24,
+			pathname = "/node_modules/.vite/deps/react-dom_client.js",
+			name = "node_modules/.pnpm/scheduler@0.27.0/node_modules/scheduler/index.js",
+		},
+		StackFrame {
+			line = 3,
+			col = 50,
+			pathname = "/node_modules/.vite/deps/chunk-FOAMPUX3.js",
+			name = "__require",
+		},
+		StackFrame {
+			line = 17257,
+			col = 23,
+			pathname = "/node_modules/.vite/deps/react-dom_client.js",
+			name = "node_modules/.pnpm/react-dom@19.2.4_react@19.2.4/node_modules/react-dom/cjs/react-dom-client.development.js/<",
+		},
+		StackFrame {
+			line = 20175,
+			col = 7,
+			pathname = "/node_modules/.vite/deps/react-dom_client.js",
+			name = "node_modules/.pnpm/react-dom@19.2.4_react@19.2.4/node_modules/react-dom/cjs/react-dom-client.development.js",
+		},
+		StackFrame {
+			line = 3,
+			col = 50,
+			pathname = "/node_modules/.vite/deps/chunk-FOAMPUX3.js",
+			name = "__require",
+		},
+		StackFrame {
+			line = 20186,
+			col = 24,
+			pathname = "/node_modules/.vite/deps/react-dom_client.js",
+			name = "node_modules/.pnpm/react-dom@19.2.4_react@19.2.4/node_modules/react-dom/client.js",
+		},
+		StackFrame {
+			line = 3,
+			col = 50,
+			pathname = "/node_modules/.vite/deps/chunk-FOAMPUX3.js",
+			name = "__require",
+		},
+		StackFrame {
+			line = 20190,
+			col = 16,
+			pathname = "/node_modules/.vite/deps/react-dom_client.js",
+			name = "",
+		},
+	}
+	stack_trace := #load("stacktraces/firefox-dev.txt", string)
+	stack_frames := parse_stack_trace(stack_trace)
+	defer delete(stack_frames)
+	if !slice.equal(stack_frames, test_frames) {
+		testing.fail(t)
+	}
+}
+
+@(test)
+test_parse_stack_trace_zen_dev :: proc(t: ^testing.T) {
+	test_frames := []StackFrame {
+		StackFrame{line = 11, col = 19, pathname = "/src/App.tsx", name = "App/<"},
+		StackFrame {
+			line = 18565,
+			col = 20,
+			pathname = "/node_modules/.vite/deps/react-dom_client.js",
+			name = "react_stack_bottom_frame",
+		},
+		StackFrame {
+			line = 997,
+			col = 15,
+			pathname = "/node_modules/.vite/deps/react-dom_client.js",
+			name = "runWithFiberInDEV",
+		},
+		StackFrame {
+			line = 9409,
+			col = 163,
+			pathname = "/node_modules/.vite/deps/react-dom_client.js",
+			name = "commitHookEffectListMount",
+		},
+		StackFrame {
+			line = 9463,
+			col = 60,
+			pathname = "/node_modules/.vite/deps/react-dom_client.js",
+			name = "commitHookPassiveMountEffects",
+		},
+		StackFrame {
+			line = 11038,
+			col = 29,
+			pathname = "/node_modules/.vite/deps/react-dom_client.js",
+			name = "commitPassiveMountOnFiber",
+		},
+		StackFrame {
+			line = 11008,
+			col = 38,
+			pathname = "/node_modules/.vite/deps/react-dom_client.js",
+			name = "recursivelyTraversePassiveMountEffects",
+		},
+		StackFrame {
+			line = 11199,
+			col = 51,
+			pathname = "/node_modules/.vite/deps/react-dom_client.js",
+			name = "commitPassiveMountOnFiber",
+		},
+		StackFrame {
+			line = 11008,
+			col = 38,
+			pathname = "/node_modules/.vite/deps/react-dom_client.js",
+			name = "recursivelyTraversePassiveMountEffects",
+		},
+		StackFrame {
+			line = 11064,
+			col = 51,
+			pathname = "/node_modules/.vite/deps/react-dom_client.js",
+			name = "commitPassiveMountOnFiber",
+		},
+		StackFrame {
+			line = 13148,
+			col = 36,
+			pathname = "/node_modules/.vite/deps/react-dom_client.js",
+			name = "flushPassiveEffects",
+		},
+		StackFrame {
+			line = 12774,
+			col = 13,
+			pathname = "/node_modules/.vite/deps/react-dom_client.js",
+			name = "node_modules/.pnpm/react-dom@19.2.4_react@19.2.4/node_modules/react-dom/cjs/react-dom-client.development.js/commitRoot/<",
+		},
+		StackFrame {
+			line = 34,
+			col = 58,
+			pathname = "/node_modules/.vite/deps/react-dom_client.js",
+			name = "performWorkUntilDeadline",
+		},
+	}
+	stack_trace := #load("stacktraces/zen-dev.txt", string)
+	stack_frames := parse_stack_trace(stack_trace)
+	defer delete(stack_frames)
 	if !slice.equal(stack_frames, test_frames) {
 		testing.fail(t)
 	}

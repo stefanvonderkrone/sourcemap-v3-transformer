@@ -1,0 +1,13 @@
+App/<@http://localhost:5173/src/App.tsx:11:19
+react_stack_bottom_frame@http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=d2bf3542:18565:20
+runWithFiberInDEV@http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=d2bf3542:997:15
+commitHookEffectListMount@http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=d2bf3542:9409:163
+commitHookPassiveMountEffects@http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=d2bf3542:9463:60
+commitPassiveMountOnFiber@http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=d2bf3542:11038:29
+recursivelyTraversePassiveMountEffects@http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=d2bf3542:11008:38
+commitPassiveMountOnFiber@http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=d2bf3542:11199:51
+recursivelyTraversePassiveMountEffects@http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=d2bf3542:11008:38
+commitPassiveMountOnFiber@http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=d2bf3542:11064:51
+flushPassiveEffects@http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=d2bf3542:13148:36
+node_modules/.pnpm/react-dom@19.2.4_react@19.2.4/node_modules/react-dom/cjs/react-dom-client.development.js/commitRoot/<@http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=d2bf3542:12774:13
+performWorkUntilDeadline@http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=d2bf3542:34:58

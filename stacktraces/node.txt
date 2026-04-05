@@ -1,0 +1,10 @@
+Error: test
+    at d (file:///Volumes/Work/Github/sourcemaps-v3-transformer/error.js:14:9)
+    at c (file:///Volumes/Work/Github/sourcemaps-v3-transformer/error.js:10:3)
+    at b (file:///Volumes/Work/Github/sourcemaps-v3-transformer/error.js:6:3)
+    at a (file:///Volumes/Work/Github/sourcemaps-v3-transformer/error.js:2:3)
+    at file:///Volumes/Work/Github/sourcemaps-v3-transformer/error.js:17:1
+    at ModuleJob.run (node:internal/modules/esm/module_job:343:25)
+    at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:665:26)
+    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:117:5)
+
