@@ -101,7 +101,6 @@ cmd_parse :: proc(args: []string) {
 		return
 	}
 	contents := string(buffer[:n])
-	fmt.printfln("%s", contents)
 
 	stack_traces := parse_stack_trace(string(contents))
 	json_out, json_error := json.marshal(stack_traces)
