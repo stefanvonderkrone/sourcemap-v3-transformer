@@ -70,10 +70,7 @@ json_read_sourcemap :: proc(
 	source_map: ^Source_Map_V3,
 	allocator := context.allocator,
 ) {
-	arena: vmem.Arena
-	arena_allocator := vmem.arena_allocator(&arena)
-	defer vmem.arena_destroy(&arena)
-	value, json_error := json.parse(data, parse_integers = true, allocator = arena_allocator)
+	value, json_error := json.parse(data, parse_integers = true, allocator = allocator)
 
 	if json_error != nil {
 		fmt.printfln("%e", json_error)
@@ -104,7 +101,7 @@ json_read_sourcemap :: proc(
 	{
 		file, file_ok := json_object_get_prop(object, "file", json.String)
 		if file_ok {
-			source_map.file = strings.clone(file, allocator)
+			source_map.file = file
 		}
 	}
 
@@ -112,7 +109,7 @@ json_read_sourcemap :: proc(
 	{
 		source_root, source_root_ok := json_object_get_prop(object, "sourceRoot", json.String)
 		if source_root_ok {
-			source_map.source_root = strings.clone(source_root, allocator)
+			source_map.source_root = source_root
 		}
 	}
 
@@ -163,7 +160,7 @@ json_read_sourcemap :: proc(
 	{
 		names, names_ok := json_object_get_prop(object, "names", json.Array)
 		if names_ok {
-			names_list := json_array_copy_strings(names, allocator)
+			names_list := json_string_array(names, allocator)
 			source_map.names = names_list[:]
 		}
 	}
@@ -176,7 +173,7 @@ json_read_sourcemap :: proc(
 			fmt.printfln("sources Null or not an Array")
 			return
 		}
-		sources_list := json_array_copy_strings(sources, allocator)
+		sources_list := json_string_array(sources, allocator)
 		source_map.sources = sources_list[:]
 	}
 
@@ -187,18 +184,18 @@ json_read_sourcemap :: proc(
 			fmt.printfln("sourcesContent Null or not an Array")
 			return
 		}
-		content_list := json_array_copy_strings(content, allocator)
+		content_list := json_string_array(content, allocator)
 		source_map.sources_content = content_list[:]
 	}
 
 }
 
-json_array_copy_strings :: proc(array: json.Array, allocator := context.allocator) -> []string {
-	copy := make([dynamic]string, 0, len(array))
+json_string_array :: proc(array: json.Array, allocator := context.allocator) -> []string {
+	copy := make([dynamic]string, 0, len(array), allocator)
 	for item in array {
 		string, ok := item.(json.String)
 		if ok {
-			append(&copy, strings.clone(string, allocator))
+			append(&copy, string)
 		}
 	}
 	return copy[:]
@@ -245,7 +242,7 @@ mappings_decode :: proc(mappings: string, allocator := context.allocator) -> []M
 
 		if len(segments) > 0 {
 			for segment, index in segments {
-				values := vlq_decode(segment, allocator)
+				values := vlq_decode(segment, arena_allocator)
 				num_values := len(values)
 
 				if num_values >= 1 {

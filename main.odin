@@ -71,16 +71,22 @@ cmd_translate :: proc(args: []string) {
 
 	mapping, ok := translate_mapping(source_map, line, column)
 	if ok {
-		fmt.printfln("original_line: %i", mapping.original_line + 1)
-		fmt.printfln("original_column: %i", mapping.original_column + 1)
+		stack_frame: Stack_Frame
+		// TODO: consider using uints for Mapping struct
+		stack_frame.line = uint(mapping.original_line + 1)
+		stack_frame.col = uint(mapping.original_column + 1)
+
 		if mapping.source_index >= 0 && int(mapping.source_index) < len(source_map.sources) {
-			fmt.printfln("original_file: %s", source_map.sources[mapping.source_index])
+			stack_frame.pathname = source_map.sources[mapping.source_index]
 		}
 		if mapping.length > 4 &&
 		   mapping.name_index >= 0 &&
 		   int(mapping.name_index) < len(source_map.names) {
-			fmt.printfln("original_name: %s", source_map.names[mapping.name_index])
+			stack_frame.name = source_map.names[mapping.name_index]
 		}
+
+		json_string, ok := json.marshal(stack_frame, {use_spaces = true, pretty = true})
+		fmt.printfln("%s", json_string)
 	}
 }
 
@@ -92,23 +98,29 @@ cmd_parse :: proc(args: []string) {
 		h, h_error := os.open(file_name)
 		if h_error != nil {
 			fmt.eprintfln("%e", h_error)
-			return
+			os.exit(1)
 		}
 		handle = h
 	}
-	// TODO: make it more flexible
-	buffer: [4096]byte
-	n, read_error := os.read(handle, buffer[:])
-	if read_error != nil {
-		fmt.eprintfln("%e", read_error)
+	defer if handle != os.stdin {os.close(handle)}
+
+	BUFFER_SIZE :: 4096
+	buffer := make([dynamic]byte, 0, BUFFER_SIZE)
+	chunk: [BUFFER_SIZE]byte
+
+	for {
+		n, read_error := os.read(handle, chunk[:])
+		if read_error != nil {
+			fmt.eprintfln("%e", read_error)
+			os.exit(1)
+		}
+		if n == 0 {break}
+		append(&buffer, ..chunk[:n])
 	}
-	if n == 0 {
-		return
-	}
-	contents := string(buffer[:n])
+	contents := string(buffer[:])
 
 	stack_traces := parse_stack_trace(string(contents))
-	json_out, json_error := json.marshal(stack_traces)
+	json_out, json_error := json.marshal(stack_traces, {use_spaces = true, pretty = true})
 	if json_error != nil {
 		fmt.eprintfln("%e", json_error)
 	}
