@@ -3,6 +3,7 @@ package smv3t
 import "core:bufio"
 import "core:encoding/json"
 import "core:fmt"
+import "core:io"
 import vmem "core:mem/virtual"
 import "core:os"
 import "core:slice"
@@ -97,7 +98,7 @@ cmd_parse :: proc(args: []string) {
 		file_name := args[0]
 		h, h_error := os.open(file_name)
 		if h_error != nil {
-			fmt.eprintfln("%e", h_error)
+			fmt.eprintfln("could not open file: %v", h_error)
 			os.exit(1)
 		}
 		handle = h
@@ -110,8 +111,8 @@ cmd_parse :: proc(args: []string) {
 
 	for {
 		n, read_error := os.read(handle, chunk[:])
-		if read_error != nil {
-			fmt.eprintfln("%e", read_error)
+		if read_error != nil && read_error != io.Error.EOF {
+			fmt.eprintfln("could not read handle: %v", read_error)
 			os.exit(1)
 		}
 		if n == 0 {break}
@@ -119,7 +120,7 @@ cmd_parse :: proc(args: []string) {
 	}
 	contents := string(buffer[:])
 
-	stack_traces := parse_stack_trace(string(contents))
+	stack_traces := parse_stack_trace(contents)
 	json_out, json_error := json.marshal(stack_traces, {use_spaces = true, pretty = true})
 	if json_error != nil {
 		fmt.eprintfln("%e", json_error)
