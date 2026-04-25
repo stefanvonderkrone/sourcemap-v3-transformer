@@ -19,6 +19,8 @@ main :: proc() {
 		cmd_parse(os.args[2:])
 	case "translate":
 		cmd_translate(os.args[2:])
+	case "transform":
+		cmd_transform(os.args[2:])
 	case "help":
 		fallthrough
 	case:
@@ -32,6 +34,8 @@ cmd_print_help :: proc(cmd: Command) {
 		fmt.println("print help parse")
 	case .Translate:
 		fmt.println("print help translate")
+	case .Transform:
+		fmt.println("print help transform")
 	case .Help:
 		fmt.println("print help")
 	}
@@ -60,9 +64,9 @@ cmd_translate :: proc(args: []string) {
 		}
 	}
 
-	data, file_error := os.read_entire_file_from_path(file_name, context.temp_allocator)
-	if file_error != nil {
-		fmt.eprintfln("%e", file_error)
+	data, read_error := read_input(file_name)
+	if read_error != nil {
+		fmt.eprintfln("could not read input: %e", read_error)
 		return
 	}
 
@@ -93,43 +97,121 @@ cmd_translate :: proc(args: []string) {
 
 cmd_parse :: proc(args: []string) {
 	num_args := len(args)
+	data, read_error := read_input(num_args > 0 ? args[0] : nil)
+	if read_error != nil {
+		fmt.eprintfln("could not read input: %v", read_error)
+		os.exit(1)
+	}
+
+	stack_frames := parse_stack_trace(string(data))
+	json_out, json_error := json.marshal(stack_frames, {use_spaces = true, pretty = true})
+	if json_error != nil {
+		fmt.eprintfln("could not parse json: %e", json_error)
+		os.exit(1)
+	}
+	fmt.printfln("%s", json_out)
+}
+
+// --map *=/path/to/assets
+// --map localhost=/path/to/assets
+cmd_transform :: proc(args: []string) {
+	num_args := len(args)
+	mappings: map[string]string
+	input: Maybe(string)
+	i := 0
+	for i < num_args {
+		arg := args[i]
+		switch (arg) {
+		// mapping
+		case "-m":
+			fallthrough
+		case "--mapping":
+			i = i + 1
+			mapping := args[i]
+			key, value, ok := parse_key_value(mapping)
+			if !ok {
+				fmt.eprintfln("invalid mapping '%s'", mapping)
+				os.exit(1)
+			}
+			mappings[key] = value
+		// input
+		case "-i":
+			fallthrough
+		case "--input":
+			i = i + 1
+			input = args[i]
+		}
+		i = i + 1
+	}
+	data, read_error := read_input(input)
+	if read_error != nil {
+		fmt.eprintfln("could not read input: v%", read_error)
+		os.exit(1)
+	}
+	stack_frames := parse_stack_trace(string(data))
+	for &frame in stack_frames {
+		for path, replacement in mappings {
+			index := strings.index(frame.pathname, path)
+			if index > -1 {
+				tmp_path := frame.pathname[index + len(path):]
+				new_path := strings.join({path, tmp_path}, "")
+				fmt.printfln("new_path=%s", new_path)
+				frame.pathname = new_path
+				break
+			}
+		}
+	}
+}
+
+// TODO: validation (only one =, security, etc)
+parse_key_value :: proc(s: string) -> (key: string, value: string, ok: bool) {
+	key = {}
+	value = {}
+	ok = false
+	num_chars := len(s)
+	for i in 0 ..< num_chars {
+		char := s[i]
+		if char == '=' {
+			key = s[:i]
+			value = s[i + 1:]
+			ok = true
+			return
+		}
+	}
+	return
+}
+
+read_input :: proc(path: Maybe(string), allocator := context.allocator) -> ([]byte, os.Error) {
 	handle := os.stdin
-	if num_args > 0 {
-		file_name := args[0]
-		h, h_error := os.open(file_name)
+	if path != nil {
+		h, h_error := os.open(path.?)
 		if h_error != nil {
 			fmt.eprintfln("could not open file: %v", h_error)
-			os.exit(1)
+			return {}, h_error
 		}
 		handle = h
 	}
 	defer if handle != os.stdin {os.close(handle)}
 
 	BUFFER_SIZE :: 4096
-	buffer := make([dynamic]byte, 0, BUFFER_SIZE)
+	buffer := make([dynamic]byte, 0, BUFFER_SIZE, allocator)
 	chunk: [BUFFER_SIZE]byte
 
 	for {
 		n, read_error := os.read(handle, chunk[:])
 		if read_error != nil && read_error != io.Error.EOF {
 			fmt.eprintfln("could not read handle: %v", read_error)
-			os.exit(1)
+			return {}, read_error
 		}
 		if n == 0 {break}
 		append(&buffer, ..chunk[:n])
 	}
-	contents := string(buffer[:])
-
-	stack_traces := parse_stack_trace(contents)
-	json_out, json_error := json.marshal(stack_traces, {use_spaces = true, pretty = true})
-	if json_error != nil {
-		fmt.eprintfln("%e", json_error)
-	}
-	fmt.printfln("%s", json_out)
+	return buffer[:], nil
 }
 
 Command :: enum {
 	Help,
 	Translate,
 	Parse,
+	Transform,
 }
