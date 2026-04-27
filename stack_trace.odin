@@ -40,8 +40,6 @@ parse_stack_trace :: proc(
 		if len(stack_frame_line) == 0 {
 			continue
 		}
-		// fmt.println("")
-		// fmt.printfln("stack_frame_line: \n%s", stack_frame_line)
 		parser := make_parser_iterator(stack_frame_line)
 
 		has_closing_parenthesis := false
@@ -60,7 +58,6 @@ parse_stack_trace :: proc(
 		if !col_ok {
 			continue
 		}
-		// fmt.printfln("col: '%i'", col)
 
 		// parse line
 		line_str, line_str_ok := parser_collect_digits(&parser)
@@ -73,7 +70,6 @@ parse_stack_trace :: proc(
 		if !line_ok {
 			continue
 		}
-		// fmt.printfln("line: '%i'", line)
 
 		last_char := parser_current_char(&parser)
 
@@ -123,30 +119,15 @@ parse_stack_trace :: proc(
 			}
 
 			path = stack_frame_line[start_pos + 1:end_pos + 1]
-			// fmt.printfln("path: '%s', start_pos: %i, end_pos: %i", path, start_pos, end_pos)
 		}
 
 		// skip whitespace
 		parser_skip_char(&parser, ' ')
 
-		// fmt.printfln(
-		// 	"char: \"%c\" %i",
-		// 	parser_current_char(&parser),
-		// 	parser_current_position(&parser),
-		// )
-		// fmt.printfln("rest: '%s'", stack_frame_line[:parser_current_position(&parser) + 1])
-
 		// parse name
 		// skip until ' ' || '@'
-		// fmt.printfln("rest: '%s'", stack_frame_line[:parser_current_position(&parser) + 1])
 		name: string
 		if has_closing_parenthesis {
-			// parser_skip_until(&parser, ' ')
-			// fmt.printfln(
-			// 	"cur char: '%c', cur pos: %i",
-			// 	parser_current_char(&parser),
-			// 	parser_current_position(&parser),
-			// )
 			end_pos := parser_current_position(&parser)
 			start_pos := end_pos
 			for char, idx in parser_iterator(&parser) {
@@ -161,7 +142,6 @@ parse_stack_trace :: proc(
 				}
 			}
 			name = stack_frame_line[start_pos:end_pos + 1]
-			// fmt.printfln("start_pos: %i, end_pos: %i, name: '%s'", start_pos, end_pos, name)
 			// no name
 		} else {
 			for _ in parser_iterator(&parser) {
@@ -174,8 +154,6 @@ parse_stack_trace :: proc(
 			}
 			// no name
 		}
-
-		// fmt.printfln("name: '%s'", name)
 
 		append(&stack_frames, Stack_Frame{line = line, col = col, pathname = path, name = name})
 	}
