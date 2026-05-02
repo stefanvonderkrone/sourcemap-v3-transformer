@@ -18,8 +18,87 @@ parse_stack_trace_v2 :: proc(
 
 	for stack_trace_line in lines {
 		// tokenize
-		// tokens := tokenize_stack_frame(stack_trace_line, temp_allocator)
+		tokens := tokenize_stack_frame(stack_trace_line, temp_allocator)
+		tokens = token_trim(tokens)
 
+		num_tokens := len(tokens)
+		token_index := num_tokens - 1
+
+		// we need to look at the first two tokens at least
+		if num_tokens < 2 {
+			continue
+		}
+
+		line: uint = ---
+		col: uint = ---
+		pathname: string = ---
+		name: string = ---
+
+		t0 := tokens[0]
+		t1 := tokens[1]
+		if t1.type == .WHITESPACE &&
+		   t0.type == .WORD &&
+		   stack_trace_line[t0.start:t0.end] == "at" {
+			// we have a chromium like stack trace
+		} else {
+			// we have a Firefox/Safari like stack trace
+			path_start: Token = ---
+			path_end: Token = ---
+			if t0.type == .AT {
+				name = ""
+				path_start = t1
+
+				// we expect at least 6 tokens (.AT, .WORD, .COLON, .DIGIT, .COLON, .DIGIT)
+				if num_tokens < 6 {
+					continue
+				}
+			} else {
+				at_index := -1
+				for i in 1 ..< num_tokens {
+					if tokens[i].type == .AT {
+						name = stack_trace_line[t0.start:tokens[i - 1].end]
+						at_index = i
+					}
+				}
+
+				// we did not found an `@`
+				// we expect at least 6 more tokens (.WORD, .COLON, .DIGIT, .COLON, .DIGIT)
+				if at_index < 0 || num_tokens <= at_index + 5 {
+					continue
+				}
+
+				path_start = tokens[at_index + 1]
+			}
+
+			path_end = tokens[num_tokens - 5]
+			t_column := tokens[num_tokens - 1]
+			t_column_colon := tokens[num_tokens - 2]
+			t_line := tokens[num_tokens - 3]
+			t_line_colon := tokens[num_tokens - 4]
+
+			// we expect `:d+:d+` at the end
+			if t_column.type != .DIGIT &&
+			   t_column_colon.type != .COLON &&
+			   t_line.type != .DIGIT &&
+			   t_line_colon.type != .COLON {
+				continue
+			}
+			column_str := stack_trace_line[t_column.start:t_column.end]
+			ok: bool = ---
+			col, ok = strconv.parse_uint(column_str)
+			if !ok {
+				continue
+			}
+			line_str := stack_trace_line[t_line.start:t_line.end]
+			line, ok = strconv.parse_uint(line_str)
+			if !ok {
+				continue
+			}
+
+			pathname = stack_trace_line[path_start.start:path_end.end]
+
+			append(&stack_frames, Stack_Frame{line, col, pathname, name})
+		}
 	}
 
 	return stack_frames[:]
@@ -116,6 +195,111 @@ TokenType :: enum {
 	BRACKET_OPENING,
 	BRACKET_CLOSING,
 	AT,
+}
+
+@(test)
+test_parse_stack_trace_v2_safari_build :: proc(t: ^testing.T) {
+	test_frames := []Stack_Frame {
+		Stack_Frame {
+			line = 9,
+			col = 37413,
+			pathname = "http://localhost:4173/assets/index-D6p3_k4u.js",
+			name = "U",
+		},
+		Stack_Frame {
+			line = 8,
+			col = 127055,
+			pathname = "http://localhost:4173/assets/index-D6p3_k4u.js",
+			name = "Hy",
+		},
+		Stack_Frame {
+			line = 8,
+			col = 132072,
+			pathname = "http://localhost:4173/assets/index-D6p3_k4u.js",
+			name = "",
+		},
+		Stack_Frame {
+			line = 8,
+			col = 15122,
+			pathname = "http://localhost:4173/assets/index-D6p3_k4u.js",
+			name = "Yi",
+		},
+		Stack_Frame {
+			line = 8,
+			col = 128289,
+			pathname = "http://localhost:4173/assets/index-D6p3_k4u.js",
+			name = "Xc",
+		},
+		Stack_Frame {
+			line = 9,
+			col = 28541,
+			pathname = "http://localhost:4173/assets/index-D6p3_k4u.js",
+			name = "Pc",
+		},
+		Stack_Frame {
+			line = 9,
+			col = 28363,
+			pathname = "http://localhost:4173/assets/index-D6p3_k4u.js",
+			name = "j1",
+		},
+	}
+	stack_trace := #load("stacktraces/safari-build.txt", string)
+	stack_frames := parse_stack_trace_v2(stack_trace)
+	defer delete(stack_frames)
+	expect_slice(t, stack_frames, test_frames, "firefox build")
+}
+
+
+@(test)
+test_parse_stack_trace_v2_firefox_build :: proc(t: ^testing.T) {
+	test_frames := []Stack_Frame {
+		Stack_Frame {
+			line = 9,
+			col = 37404,
+			pathname = "http://localhost:4173/assets/index-D6p3_k4u.js",
+			name = "U",
+		},
+		Stack_Frame {
+			line = 8,
+			col = 127055,
+			pathname = "http://localhost:4173/assets/index-D6p3_k4u.js",
+			name = "Hy",
+		},
+		Stack_Frame {
+			line = 8,
+			col = 132072,
+			pathname = "http://localhost:4173/assets/index-D6p3_k4u.js",
+			name = "P1/Xc/<",
+		},
+		Stack_Frame {
+			line = 8,
+			col = 15122,
+			pathname = "http://localhost:4173/assets/index-D6p3_k4u.js",
+			name = "Yi",
+		},
+		Stack_Frame {
+			line = 8,
+			col = 128289,
+			pathname = "http://localhost:4173/assets/index-D6p3_k4u.js",
+			name = "Xc",
+		},
+		Stack_Frame {
+			line = 9,
+			col = 28541,
+			pathname = "http://localhost:4173/assets/index-D6p3_k4u.js",
+			name = "Pc",
+		},
+		Stack_Frame {
+			line = 9,
+			col = 28361,
+			pathname = "http://localhost:4173/assets/index-D6p3_k4u.js",
+			name = "j1",
+		},
+	}
+	stack_trace := #load("stacktraces/firefox-build.txt", string)
+	stack_frames := parse_stack_trace_v2(stack_trace)
+	defer delete(stack_frames)
+	expect_slice(t, stack_frames, test_frames, "firefox build")
 }
 
 @(test)
@@ -336,8 +520,7 @@ test_tokenize_stack_frame :: proc(t: ^testing.T) {
 @(private)
 expect_slice :: proc(
 	t: ^testing.T,
-	result: []Token,
-	expected: []Token,
+	result, expected: $T/[]$E,
 	msg: string,
 	loc := #caller_location,
 ) {
