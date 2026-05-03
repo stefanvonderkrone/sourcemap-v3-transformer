@@ -97,13 +97,28 @@ cmd_translate :: proc(args: []string) {
 
 cmd_parse :: proc(args: []string) {
 	num_args := len(args)
-	data, read_error := read_input(num_args > 0 ? args[0] : nil)
+	input := ""
+	v2 := false
+	for arg in args {
+		switch (arg) {
+		case "--v2":
+			v2 = true
+		case:
+			input = arg
+		}
+	}
+	data, read_error := read_input(input != "" ? input : nil)
 	if read_error != nil {
 		fmt.eprintfln("could not read input: %v", read_error)
 		os.exit(1)
 	}
 
-	stack_frames := parse_stack_trace(string(data))
+	stack_frames: []Stack_Frame = ---
+	if v2 {
+		stack_frames = parse_stack_trace_v2(string(data))
+	} else {
+		stack_frames = parse_stack_trace(string(data))
+	}
 	json_out, json_error := json.marshal(stack_frames, {use_spaces = true, pretty = true})
 	if json_error != nil {
 		fmt.eprintfln("could not parse json: %e", json_error)
