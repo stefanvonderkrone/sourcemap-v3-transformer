@@ -50,26 +50,14 @@ parse_stack_trace :: proc(
 		}
 
 		// parse column
-		col_str, col_str_ok := parser_collect_digits(&parser)
-		if !col_str_ok {
-			continue
-		}
-		col, col_ok := strconv.parse_uint(col_str, 10)
-		if !col_ok {
-			continue
-		}
+		col_str := parser_collect_digits(&parser) or_continue
+		col := strconv.parse_uint(col_str, 10) or_continue
 
 		// parse line
-		line_str, line_str_ok := parser_collect_digits(&parser)
-		if !line_str_ok {
-			// TODO: bun internal function
-			//       at loadAndEvaluateModule (2:1)
-			continue
-		}
-		line, line_ok := strconv.parse_uint(line_str, 10)
-		if !line_ok {
-			continue
-		}
+		// TODO: bun internal function
+		//       at loadAndEvaluateModule (2:1)
+		line_str := parser_collect_digits(&parser) or_continue
+		line := strconv.parse_uint(line_str, 10) or_continue
 
 		last_char := parser_current_char(&parser)
 

@@ -36,7 +36,7 @@ translate_mapping :: proc(source_map: Source_Map_V3, line: i32, col: i32) -> (^M
 	generated_column := col - 1
 
 	num_mapping_lines := i32(len(source_map.mappings))
-	if generated_line >= num_mapping_lines {
+	if generated_line < 0 || generated_line >= num_mapping_lines {
 		fmt.printfln("line out of range: %i", line)
 		return nil, false
 	}

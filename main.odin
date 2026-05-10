@@ -141,6 +141,10 @@ cmd_transform :: proc(args: []string) {
 		case "-m":
 			fallthrough
 		case "--mapping":
+			if i + 1 >= num_args {
+				fmt.eprintfln("no mapping after `--mapping` arg")
+				os.exit(1)
+			}
 			i = i + 1
 			mapping := args[i]
 			key, value, ok := parse_key_value(mapping)
@@ -153,6 +157,10 @@ cmd_transform :: proc(args: []string) {
 		case "-i":
 			fallthrough
 		case "--input":
+			if i + 1 >= num_args {
+				fmt.eprintfln("no input after `--input` arg")
+				os.exit(1)
+			}
 			i = i + 1
 			input = args[i]
 		}
@@ -169,7 +177,7 @@ cmd_transform :: proc(args: []string) {
 			index := strings.index(frame.pathname, path)
 			if index > -1 {
 				tmp_path := frame.pathname[index + len(path):]
-				new_path := strings.join({path, tmp_path}, "")
+				new_path := strings.join({replacement, tmp_path}, "")
 				fmt.printfln("new_path=%s", new_path)
 				frame.pathname = new_path
 				break

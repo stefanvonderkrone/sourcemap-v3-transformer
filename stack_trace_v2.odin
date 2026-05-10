@@ -48,7 +48,7 @@ parse_stack_trace_v2 :: proc(
 			// we have a chromium like stack trace
 			if tokens[num_tokens - 1].type == .BRACKET_CLOSING {
 				opening_bracket_index := -1
-				for i in 2 ..< num_tokens {
+				for i in 4 ..< num_tokens {
 					if tokens[i].type == .BRACKET_OPENING {
 						// -2 because there comes .WHITESPACE before the .BRACKET_OPENING
 						name = stack_trace_line[tokens[2].start:tokens[i - 2].end]
@@ -127,16 +127,9 @@ parse_stack_trace_v2 :: proc(
 			continue
 		}
 		column_str := stack_trace_line[t_column.start:t_column.end]
-		ok: bool = ---
-		col, ok = strconv.parse_uint(column_str)
-		if !ok {
-			continue
-		}
+		col = strconv.parse_uint(column_str) or_continue
 		line_str := stack_trace_line[t_line.start:t_line.end]
-		line, ok = strconv.parse_uint(line_str)
-		if !ok {
-			continue
-		}
+		line = strconv.parse_uint(line_str) or_continue
 
 		// it might happen, that we have no pathname and we only have `(d+:d+)`
 		if t_line_colon.type != .COLON {
