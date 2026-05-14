@@ -98,11 +98,13 @@ cmd_translate :: proc(args: []string) {
 cmd_parse :: proc(args: []string) {
 	num_args := len(args)
 	input := ""
-	v2 := false
+	version := 1
 	for arg in args {
 		switch (arg) {
 		case "--v2":
-			v2 = true
+			version = 2
+		case "--v3":
+			version = 3
 		case:
 			input = arg
 		}
@@ -114,10 +116,13 @@ cmd_parse :: proc(args: []string) {
 	}
 
 	stack_frames: []Stack_Frame = ---
-	if v2 {
-		stack_frames = parse_stack_trace_v2(string(data))
-	} else {
+	switch (version) {
+	case 1:
 		stack_frames = parse_stack_trace(string(data))
+	case 2:
+		stack_frames = parse_stack_trace_v2(string(data))
+	case 3:
+		stack_frames = parse_stack_trace_v3(string(data))
 	}
 	json_out, json_error := json.marshal(stack_frames, {use_spaces = true, pretty = true})
 	if json_error != nil {
