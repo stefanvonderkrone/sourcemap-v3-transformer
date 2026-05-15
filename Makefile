@@ -13,6 +13,7 @@ PARSE_BUILD_STDIN_TARGETS := $(addprefix parse-build-stdin-,$(STACKTRACE_NAMES))
 .PHONY: run
 .PHONY: run-translate
 .PHONY: build
+.PHONY: rebuild
 .PHONY: build-fast
 .PHONY: parse-debug-direct
 .PHONY: parse-debug-stdin
@@ -40,8 +41,16 @@ $(BIN): | $(BIN_DIR)
 
 build: $(BIN)
 
+rebuild:
+	rm -rf bin
+	$(MAKE) build
+
 build-fast: $(BIN_DIR)
 	odin build . -out:"$(BIN)"
+
+bench: rebuild
+	odin build benchmark -out:bin/benchmark -o:aggressive
+	bin/benchmark
 
 parse-debug-direct: $(PARSE_DEBUG_DIRECT_TARGETS)
 

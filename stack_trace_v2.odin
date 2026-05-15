@@ -13,12 +13,13 @@ parse_stack_trace_v2 :: proc(
 	allocator := context.allocator,
 	temp_allocator := context.temp_allocator,
 ) -> []Stack_Frame {
-	lines := strings.split(stack_trace, "\n", temp_allocator)
-	stack_frames := make([dynamic]Stack_Frame, 0, len(lines), allocator)
+	stack_frames := make([dynamic]Stack_Frame, 0, 32, allocator)
+	token_buffer := make([dynamic]Token, 0, 32, temp_allocator)
 
-	for stack_trace_line in lines {
+	remaining := stack_trace
+	for stack_trace_line in strings.split_iterator(&remaining, "\n") {
 		// tokenize
-		tokens := tokenize_stack_frame(stack_trace_line, temp_allocator)
+		tokens := tokenize_stack_frame(stack_trace_line, &token_buffer)
 		tokens = token_trim(tokens)
 
 		num_tokens := len(tokens)
@@ -53,6 +54,7 @@ parse_stack_trace_v2 :: proc(
 						// -2 because there comes .WHITESPACE before the .BRACKET_OPENING
 						name = stack_trace_line[tokens[2].start:tokens[i - 2].end]
 						opening_bracket_index = i
+						break
 					}
 				}
 
@@ -167,41 +169,37 @@ token_trim :: proc(tokens: []Token) -> []Token {
 	return tokens[start:end]
 }
 
-tokenize_stack_frame :: proc(
-	stack_frame_line: string,
-	temp_allocator := context.temp_allocator,
-) -> []Token {
-	tokens := make([dynamic]Token, temp_allocator)
+tokenize_stack_frame :: proc(stack_frame_line: string, tokens: ^[dynamic]Token) -> []Token {
+	clear(tokens)
 
 	start := 0
 	type: TokenType
-	for char, index in stack_frame_line {
+	for index in 0 ..< len(stack_frame_line) {
 		// first entry
 		if index == 0 {
-			type = token_type_from_rune(char)
+			type = token_type_from_byte(stack_frame_line[index])
 			continue
 		}
-		// token type
-		current_type := token_type_from_rune(char)
+		current_type := token_type_from_byte(stack_frame_line[index])
 
 		if type != current_type {
-			append(&tokens, Token{start = start, end = index, type = type})
+			append(tokens, Token{start = start, end = index, type = type})
 			start = index
 			type = current_type
 		}
 	}
-	append(&tokens, Token{start = start, end = len(stack_frame_line), type = type})
+	append(tokens, Token{start = start, end = len(stack_frame_line), type = type})
 
 	return tokens[:]
 }
 
-token_type_from_rune :: proc(r: rune) -> TokenType {
-	if strings.is_space(r) {
+token_type_from_byte :: proc(b: u8) -> TokenType {
+	if b == ' ' || b == '\t' {
 		return .WHITESPACE
-	} else if rune_is_digit(r) {
+	} else if b >= '0' && b <= '9' {
 		return .DIGIT
 	} else {
-		switch (r) {
+		switch (b) {
 		case ':':
 			return .COLON
 		case '(':
@@ -213,10 +211,6 @@ token_type_from_rune :: proc(r: rune) -> TokenType {
 		}
 	}
 	return .WORD
-}
-
-rune_is_digit :: proc(r: rune) -> bool {
-	return r >= 48 && r <= 57
 }
 
 Token :: struct {
@@ -1183,8 +1177,9 @@ test_tokenize_stack_frame :: proc(t: ^testing.T) {
 		{55, 56, .BRACKET_CLOSING},
 	}
 
+	token_buffer := make([dynamic]Token, context.temp_allocator)
 	for key, value in m {
-		tokens := tokenize_stack_frame(key, context.temp_allocator)
+		tokens := tokenize_stack_frame(key, &token_buffer)
 		expect_slice(t, tokens, value, key)
 	}
 }

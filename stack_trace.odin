@@ -34,9 +34,10 @@ parse_stack_trace :: proc(
 	allocator := context.allocator,
 	temp_allocator := context.temp_allocator,
 ) -> []Stack_Frame {
-	lines := strings.split(stack_trace, "\n", temp_allocator)
-	stack_frames := make([dynamic]Stack_Frame, 0, len(lines), allocator)
-	for stack_frame_line in lines {
+	stack_frames := make([dynamic]Stack_Frame, 0, 32, allocator)
+
+	remaining := stack_trace
+	for stack_frame_line in strings.split_iterator(&remaining, "\n") {
 		if len(stack_frame_line) == 0 {
 			continue
 		}
@@ -50,14 +51,12 @@ parse_stack_trace :: proc(
 		}
 
 		// parse column
-		col_str := parser_collect_digits(&parser) or_continue
-		col := strconv.parse_uint(col_str, 10) or_continue
+		col := parser_collect_uint(&parser) or_continue
 
 		// parse line
 		// TODO: bun internal function
 		//       at loadAndEvaluateModule (2:1)
-		line_str := parser_collect_digits(&parser) or_continue
-		line := strconv.parse_uint(line_str, 10) or_continue
+		line := parser_collect_uint(&parser) or_continue
 
 		last_char := parser_current_char(&parser)
 
@@ -124,7 +123,10 @@ parse_stack_trace :: proc(
 					break
 				}
 				// find " at " before the current position
-				if stack_frame_line[idx - 4:idx] == " at " {
+				if stack_frame_line[idx - 4] == ' ' &&
+				   stack_frame_line[idx - 3] == 'a' &&
+				   stack_frame_line[idx - 2] == 't' &&
+				   stack_frame_line[idx - 1] == ' ' {
 					start_pos = idx
 					break
 				}
@@ -178,18 +180,20 @@ is_digit :: proc(char: u8) -> bool {
 	return char >= 48 && char <= 57
 }
 
-parser_collect_digits :: proc(parser: ^ParserIterator) -> (string, bool) {
+parser_collect_uint :: proc(parser: ^ParserIterator) -> (uint, bool) {
 	if !is_digit(parser_current_char(parser)) {
-		return {}, false
+		return 0, false
 	}
-	end_pos := parser.current_pos + 1
-	for char, idx in parser_iterator(parser) {
+	val: uint = 0
+	multiplier: uint = 1
+	for char in parser_iterator(parser) {
 		if !is_digit(char) {
-			start_pos := idx + 1
-			return parser.content[start_pos:end_pos], true
+			return val, true
 		}
+		val += uint(char - '0') * multiplier
+		multiplier *= 10
 	}
-	return {}, false
+	return 0, false
 }
 
 parser_skip_char :: proc(parser: ^ParserIterator, char: u8) {

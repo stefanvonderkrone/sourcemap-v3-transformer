@@ -1,51 +1,39 @@
 package smv3t
 
-import "core:fmt"
-import "core:math"
-import "core:odin/tokenizer"
-import "core:slice"
 import "core:strconv"
 import "core:strings"
 import "core:testing"
-import "core:unicode/utf8"
 
 parse_stack_trace_v3 :: proc(
 	stack_trace: string,
 	allocator := context.allocator,
 	temp_allocator := context.temp_allocator,
 ) -> []Stack_Frame {
-	lines := strings.split(stack_trace, "\n", temp_allocator)
-	stack_frames := make([dynamic]Stack_Frame, 0, len(lines), allocator)
+	stack_frames := make([dynamic]Stack_Frame, 0, 32, allocator)
 
-	line_loop: for stack_trace_line in lines {
+	remaining := stack_trace
+	line_loop: for stack_trace_line in strings.split_iterator(&remaining, "\n") {
 		// tokenize
 		line := stack_trace_line
-		fmt.printfln("line: '%s', length=%i", stack_trace_line)
+		// fmt.printfln("line: '%s', length=%i", stack_trace_line)
 
 		line_no: uint = ---
 		col: uint = ---
-		pathname: string = ---
 		name := ""
 
-		path_start: int = ---
-		path_end: int = ---
-		t_column: int = ---
-		t_column_colon: int = ---
-		t_line: int = ---
-		t_line_colon: int = ---
-
-		index: int = 0
 		state := ParseState.START
 		type := StackTraceType.CHROMIUM
 
-		location: string = ---
-
 		// Start
-		for rune, index in line {
-			if strings.is_space(rune) {
+		for index in 0 ..< len(line) {
+			b := line[index]
+			if b == ' ' || b == '\t' {
 				continue
 			}
-			if rune == 'a' && len(line) > index + 3 && line[index:index + 3] == "at " {
+			if b == 'a' &&
+			   len(line) > index + 3 &&
+			   line[index + 1] == 't' &&
+			   line[index + 2] == ' ' {
 				if line[len(line) - 1] == ')' {
 					type = .CHROMIUM_WITH_NAME
 					state = .NAME
@@ -65,13 +53,13 @@ parse_stack_trace_v3 :: proc(
 			}
 		}
 
-		fmt.printfln("type = %v, state = %v", type, state)
+		// fmt.printfln("type = %v, state = %v", type, state)
 
 		if state == .NAME {
 			switch (type) {
 			case .CHROMIUM_WITH_NAME:
-				for rune, index in line {
-					if rune == '(' && index > 0 {
+				for index in 0 ..< len(line) {
+					if line[index] == '(' && index > 0 {
 						name = line[:index - 1]
 						line = line[index + 1:]
 						state = .PATH
@@ -95,8 +83,8 @@ parse_stack_trace_v3 :: proc(
 			}
 		}
 
-		fmt.printfln("name = %s", name)
-		fmt.printfln("line = '%s'", line)
+		// fmt.printfln("name = %s", name)
+		// fmt.printfln("line = '%s'", line)
 
 		// we should now have state=.PATH
 		// now parse column
@@ -110,18 +98,17 @@ parse_stack_trace_v3 :: proc(
 				break
 			}
 		}
-		fmt.printfln("col = %i", col)
-		fmt.printfln("line = '%s'", line)
+		// fmt.printfln("col = %i", col)
+		// fmt.printfln("line = '%s'", line)
 
 		// now parse line
-		line_index := 0
 		line_no_block: {
 			for i in 0 ..< len(line) {
-				line_index = len(line) - 1 - i
+				line_index := len(line) - 1 - i
 				byte := line[line_index]
 				if byte == ':' {
 					str := line[line_index + 1:]
-					fmt.printfln("str = %s", str)
+					// fmt.printfln("str = %s", str)
 					line_no = strconv.parse_uint(str) or_continue line_loop
 					line = line[:line_index]
 					break line_no_block
@@ -130,7 +117,7 @@ parse_stack_trace_v3 :: proc(
 			line_no = strconv.parse_uint(line) or_continue line_loop
 			line = ""
 		}
-		fmt.printfln("line = %i", line_no)
+		// fmt.printfln("line = %i", line_no)
 
 		for i in 0 ..< len(line) {
 			index := len(line) - 1 - i
@@ -143,7 +130,7 @@ parse_stack_trace_v3 :: proc(
 
 		append(&stack_frames, Stack_Frame{line_no, col, line, name})
 
-		fmt.println("")
+		// fmt.println("")
 	}
 
 	return stack_frames[:]
