@@ -6,6 +6,7 @@ import "core:fmt"
 import "core:io"
 import vmem "core:mem/virtual"
 import "core:os"
+import "core:path/filepath"
 import "core:slice"
 import "core:strconv"
 import "core:strings"
@@ -132,7 +133,7 @@ cmd_parse :: proc(args: []string) {
 	fmt.printfln("%s", json_out)
 }
 
-// --map *=/path/to/assets
+// --map *=/path/to/assets (how-to this?)
 // --map localhost=/path/to/assets
 cmd_transform :: proc(args: []string) {
 	num_args := len(args)
@@ -171,24 +172,72 @@ cmd_transform :: proc(args: []string) {
 		}
 		i = i + 1
 	}
+	fmt.printfln("mappings = %v", mappings)
 	data, read_error := read_input(input)
 	if read_error != nil {
 		fmt.eprintfln("could not read input: v%", read_error)
 		os.exit(1)
 	}
-	stack_frames := parse_stack_trace(string(data))
-	for &frame in stack_frames {
+	stack_frames := parse_stack_trace_v3(string(data))
+	file_map: map[string]Source_Map_V3
+	translated_stack_frames := make([dynamic]Stack_Frame, 0, len(stack_frames), context.allocator)
+	for frame in stack_frames {
 		for path, replacement in mappings {
 			index := strings.index(frame.pathname, path)
+			// fmt.printfln("pathname = %s", frame.pathname)
+			// fmt.printfln("path = %s", path)
+			// fmt.printfln("index = %i", index)
 			if index > -1 {
 				tmp_path := frame.pathname[index + len(path):]
-				new_path := strings.join({replacement, tmp_path}, "")
+				new_path := strings.join({replacement, tmp_path, ".map"}, "")
 				fmt.printfln("new_path=%s", new_path)
-				frame.pathname = new_path
+
+				// load file
+				source_map, source_map_ok := file_map[new_path]
+				if !source_map_ok {
+					data, read_error := read_input(new_path)
+					if read_error != nil {
+						fmt.eprintfln("could not read input: %e", read_error)
+						return
+					}
+					json_read_sourcemap(data, &source_map)
+					file_map[new_path] = source_map
+				}
+
+				// parse file
+				// push translation
+				mapping, mapping_ok := translate_mapping(
+					source_map,
+					i32(frame.line),
+					i32(frame.col),
+				)
+				if mapping_ok {
+					stack_frame: Stack_Frame
+					// TODO: consider using uints for Mapping struct
+					line := uint(mapping.original_line + 1)
+					col := uint(mapping.original_column + 1)
+					pathname := ""
+					name := ""
+
+					if mapping.source_index >= 0 &&
+					   int(mapping.source_index) < len(source_map.sources) {
+						pathname = source_map.sources[mapping.source_index]
+					}
+					if mapping.length > 4 &&
+					   mapping.name_index >= 0 &&
+					   int(mapping.name_index) < len(source_map.names) {
+						name = source_map.names[mapping.name_index]
+					}
+					append(&translated_stack_frames, Stack_Frame{line, col, pathname, name})
+				}
+
 				break
 			}
 		}
 	}
+	json_string, error := json.marshal(translated_stack_frames, {use_spaces = true, pretty = true})
+	fmt.printfln("%s", json_string)
+
 }
 
 // TODO: validation (only one =, security, etc)

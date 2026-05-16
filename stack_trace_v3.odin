@@ -13,9 +13,7 @@ parse_stack_trace_v3 :: proc(
 
 	remaining := stack_trace
 	line_loop: for stack_trace_line in strings.split_iterator(&remaining, "\n") {
-		// tokenize
 		line := stack_trace_line
-		// fmt.printfln("line: '%s', length=%i", stack_trace_line)
 
 		line_no: uint = ---
 		col: uint = ---
@@ -53,8 +51,6 @@ parse_stack_trace_v3 :: proc(
 			}
 		}
 
-		// fmt.printfln("type = %v, state = %v", type, state)
-
 		if state == .NAME {
 			switch (type) {
 			case .CHROMIUM_WITH_NAME:
@@ -83,9 +79,6 @@ parse_stack_trace_v3 :: proc(
 			}
 		}
 
-		// fmt.printfln("name = %s", name)
-		// fmt.printfln("line = '%s'", line)
-
 		// we should now have state=.PATH
 		// now parse column
 		for i in 0 ..< len(line) {
@@ -98,8 +91,6 @@ parse_stack_trace_v3 :: proc(
 				break
 			}
 		}
-		// fmt.printfln("col = %i", col)
-		// fmt.printfln("line = '%s'", line)
 
 		// now parse line
 		line_no_block: {
@@ -108,7 +99,6 @@ parse_stack_trace_v3 :: proc(
 				byte := line[line_index]
 				if byte == ':' {
 					str := line[line_index + 1:]
-					// fmt.printfln("str = %s", str)
 					line_no = strconv.parse_uint(str) or_continue line_loop
 					line = line[:line_index]
 					break line_no_block
@@ -117,7 +107,6 @@ parse_stack_trace_v3 :: proc(
 			line_no = strconv.parse_uint(line) or_continue line_loop
 			line = ""
 		}
-		// fmt.printfln("line = %i", line_no)
 
 		for i in 0 ..< len(line) {
 			index := len(line) - 1 - i
@@ -129,8 +118,6 @@ parse_stack_trace_v3 :: proc(
 		}
 
 		append(&stack_frames, Stack_Frame{line_no, col, line, name})
-
-		// fmt.println("")
 	}
 
 	return stack_frames[:]
