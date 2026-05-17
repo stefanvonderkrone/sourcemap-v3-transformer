@@ -134,12 +134,17 @@ cmd_parse :: proc(args: []string) {
 }
 
 // --map *=/path/to/assets (how-to this?)
+//      maybe we detect urls and use the pathname as the path and we start at the current working dir
 // --map localhost=/path/to/assets
 cmd_transform :: proc(args: []string) {
 	num_args := len(args)
 	mappings: map[string]string
 	input: Maybe(string)
 	i := 0
+	use_json := false
+	show_context := false
+	context_lines_pre := 3
+	context_lines_post := 3
 	for i < num_args {
 		arg := args[i]
 		switch (arg) {
@@ -151,7 +156,7 @@ cmd_transform :: proc(args: []string) {
 				fmt.eprintfln("no mapping after `--mapping` arg")
 				os.exit(1)
 			}
-			i = i + 1
+			i += 1
 			mapping := args[i]
 			key, value, ok := parse_key_value(mapping)
 			if !ok {
@@ -167,10 +172,18 @@ cmd_transform :: proc(args: []string) {
 				fmt.eprintfln("no input after `--input` arg")
 				os.exit(1)
 			}
-			i = i + 1
+			i += 1
 			input = args[i]
+		case "-j":
+			fallthrough
+		case "--json":
+			use_json = true
+		case "-c":
+			fallthrough
+		case "--context":
+			show_context = true
 		}
-		i = i + 1
+		i += 1
 	}
 	fmt.printfln("mappings = %v", mappings)
 	data, read_error := read_input(input)
@@ -179,65 +192,122 @@ cmd_transform :: proc(args: []string) {
 		os.exit(1)
 	}
 	stack_frames := parse_stack_trace_v3(string(data))
+	// file cache for map files
 	file_map: map[string]Source_Map_V3
 	translated_stack_frames := make([dynamic]Stack_Frame, 0, len(stack_frames), context.allocator)
+	sources := make([dynamic]string, 0, len(stack_frames), context.allocator)
 	for frame in stack_frames {
+		new_path := ""
+		// find path from mappings
 		for path, replacement in mappings {
 			index := strings.index(frame.pathname, path)
-			// fmt.printfln("pathname = %s", frame.pathname)
-			// fmt.printfln("path = %s", path)
-			// fmt.printfln("index = %i", index)
+			// TODO: handle missing mapping
 			if index > -1 {
 				tmp_path := frame.pathname[index + len(path):]
-				new_path := strings.join({replacement, tmp_path, ".map"}, "")
+				new_path = strings.join({replacement, tmp_path, ".map"}, "")
 				fmt.printfln("new_path=%s", new_path)
-
-				// load file
-				source_map, source_map_ok := file_map[new_path]
-				if !source_map_ok {
-					data, read_error := read_input(new_path)
-					if read_error != nil {
-						fmt.eprintfln("could not read input: %e", read_error)
-						return
-					}
-					json_read_sourcemap(data, &source_map)
-					file_map[new_path] = source_map
-				}
-
-				// parse file
-				// push translation
-				mapping, mapping_ok := translate_mapping(
-					source_map,
-					i32(frame.line),
-					i32(frame.col),
-				)
-				if mapping_ok {
-					stack_frame: Stack_Frame
-					// TODO: consider using uints for Mapping struct
-					line := uint(mapping.original_line + 1)
-					col := uint(mapping.original_column + 1)
-					pathname := ""
-					name := ""
-
-					if mapping.source_index >= 0 &&
-					   int(mapping.source_index) < len(source_map.sources) {
-						pathname = source_map.sources[mapping.source_index]
-					}
-					if mapping.length > 4 &&
-					   mapping.name_index >= 0 &&
-					   int(mapping.name_index) < len(source_map.names) {
-						name = source_map.names[mapping.name_index]
-					}
-					append(&translated_stack_frames, Stack_Frame{line, col, pathname, name})
-				}
 
 				break
 			}
 		}
-	}
-	json_string, error := json.marshal(translated_stack_frames, {use_spaces = true, pretty = true})
-	fmt.printfln("%s", json_string)
+		if len(new_path) > 0 {
+			fmt.printfln("fount path")
+			// load file
+			source_map, source_map_ok := file_map[new_path]
+			if !source_map_ok {
+				data, read_error := read_input(new_path)
+				if read_error != nil {
+					fmt.eprintfln("could not read input: %e", read_error)
+					os.exit(1)
+				}
+				json_read_sourcemap(data, &source_map)
+				file_map[new_path] = source_map
+			}
 
+			// parse file
+			mapping, mapping_ok := translate_mapping(source_map, i32(frame.line), i32(frame.col))
+			if mapping_ok {
+				fmt.printfln("mapping = %v", mapping)
+				// TODO: consider using uints for Mapping struct
+				line := uint(mapping.original_line + 1)
+				col := uint(mapping.original_column + 1)
+				pathname := ""
+				name := ""
+				source := ""
+
+				if mapping.source_index >= 0 &&
+				   int(mapping.source_index) < len(source_map.sources) {
+					pathname = source_map.sources[mapping.source_index]
+					// TODO: do we need this?
+					p, p_error := filepath.clean(
+						strings.join({filepath.dir(new_path), "/", pathname}, ""),
+						context.allocator,
+					)
+					if p_error == nil {
+						pathname = p
+					}
+				}
+				if mapping.length > 4 &&
+				   mapping.name_index >= 0 &&
+				   int(mapping.name_index) < len(source_map.names) {
+					name = source_map.names[mapping.name_index]
+				}
+				if mapping.source_index >= 0 &&
+				   int(mapping.source_index) < len(source_map.sources_content) {
+					source = source_map.sources_content[mapping.source_index]
+				}
+				// push translation
+				append(&translated_stack_frames, Stack_Frame{line, col, pathname, name})
+				append(&sources, source)
+			}
+		}
+		// TODO: no mapping found
+	}
+	if use_json {
+		json_string, error := json.marshal(
+			translated_stack_frames,
+			{use_spaces = true, pretty = true},
+		)
+		fmt.printfln("%s", json_string)
+	} else {
+		for frame, index in translated_stack_frames {
+			source := sources[index]
+			fmt.printf("    at ")
+			if frame.name != "" {
+				fmt.printf("%s (", frame.name)
+			}
+			if frame.pathname != "" {
+				fmt.printf("%s:", frame.pathname)
+			}
+			fmt.printf("%i:%i", frame.line, frame.col)
+			if frame.name != "" {
+				fmt.print(")")
+			}
+			fmt.print("\n")
+			if show_context {
+				lines := strings.split(source, "\n")
+				num_lines := len(lines)
+				width := len(fmt.aprintf("%d", num_lines))
+				line := int(frame.line) - 1
+				col := int(frame.col) - 1
+				for i = int(line) - context_lines_pre;
+				    i <= int(line) + context_lines_post;
+				    i += 1 {
+					if i < 0 || i >= num_lines {
+						continue
+					}
+					fmt.printfln("%*d: %s", width, i, lines[i])
+					if i == int(line) {
+						fmt.printfln(
+							"%s^",
+							strings.repeat(" ", col + width + 2, context.allocator),
+						)
+					}
+				}
+				fmt.printfln("")
+			}
+		}
+	}
 }
 
 // TODO: validation (only one =, security, etc)

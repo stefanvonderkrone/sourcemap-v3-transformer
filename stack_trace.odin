@@ -6,18 +6,6 @@ import "core:strconv"
 import "core:strings"
 import "core:testing"
 
-// STACK_TRACE := #load("stacktraces/safari-build.txt", string)
-// STACK_TRACE := #load("stacktraces/safari-dev.txt", string)
-// STACK_TRACE := #load("stacktraces/chromium-build.txt", string)
-STACK_TRACE := #load("stacktraces/chromium-dev.txt", string)
-// STACK_TRACE := #load("stacktraces/firefox-build.txt", string)
-// STACK_TRACE := #load("stacktraces/firefox-dev.txt", string)
-// STACK_TRACE := #load("stacktraces/zen-build.txt", string)
-// STACK_TRACE := #load("stacktraces/zen-dev.txt", string)
-// STACK_TRACE := #load("stacktraces/node.txt", string)
-// STACK_TRACE := #load("stacktraces/bun.txt", string)
-// STACK_TRACE := #load("stacktraces/deno.txt", string)
-
 Stack_Frame :: struct {
 	line:     uint,
 	col:      uint,
