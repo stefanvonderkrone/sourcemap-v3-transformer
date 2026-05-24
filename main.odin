@@ -24,21 +24,39 @@ main :: proc() {
 		cmd_transform(os.args[2:])
 	case "help":
 		fallthrough
+	case "--help":
+		fallthrough
+	case "-h":
+		fallthrough
 	case:
 		cmd_print_help(.Help)
 	}
 }
 
 cmd_print_help :: proc(cmd: Command) {
+	bin := os.args[0]
 	switch cmd {
 	case .Parse:
-		fmt.println("print help parse")
+		fmt.printfln("%s parse - parses a javascript stacktrace to json", bin)
+		fmt.println("Usage:")
+		fmt.printfln("\t%s parse [options] <file>", bin)
 	case .Translate:
-		fmt.println("print help translate")
+		fmt.printfln("%s - translate a given javascript stackframe", bin)
+		fmt.println("Usage:")
+		fmt.printfln("\t%s translate <file> <line> <olumn>", bin)
 	case .Transform:
-		fmt.println("print help transform")
+		fmt.printfln("%s - transform a javascript stacktrace", bin)
+		fmt.println("Usage:")
+		fmt.printfln("\t%s transform [options] <file>", bin)
 	case .Help:
-		fmt.println("print help")
+		fmt.printfln("%s is a tool to work with javascript stachtraces", bin)
+		fmt.println("Usage:")
+		fmt.printfln("\t%s command [options]", bin)
+		fmt.println("Commands:")
+		fmt.println("\tparse")
+		fmt.println("\ttranslate")
+		fmt.println("\ttransform")
+		fmt.println("\thelp")
 	}
 }
 
@@ -47,6 +65,16 @@ cmd_translate :: proc(args: []string) {
 	if num_args == 0 {
 		cmd_print_help(.Translate)
 		return
+	}
+
+	for arg in args {
+		switch (arg) {
+		case "-h":
+			fallthrough
+		case "--help":
+			cmd_print_help(.Translate)
+			os.exit(0)
+		}
 	}
 
 	file_name := args[0]
@@ -106,6 +134,11 @@ cmd_parse :: proc(args: []string) {
 			version = 2
 		case "--v3":
 			version = 3
+		case "--help":
+			fallthrough
+		case "-h":
+			cmd_print_help(.Parse)
+			os.exit(0)
 		case:
 			input = arg
 		}
@@ -148,6 +181,11 @@ cmd_transform :: proc(args: []string) {
 	for i < num_args {
 		arg := args[i]
 		switch (arg) {
+		case "-h":
+			fallthrough
+		case "--help":
+			cmd_print_help(.Transform)
+			os.exit(0)
 		// mapping
 		case "-m":
 			fallthrough
@@ -284,6 +322,7 @@ cmd_transform :: proc(args: []string) {
 				fmt.print(")")
 			}
 			fmt.print("\n")
+			// TODO: show context only for first stack frame OR use ignoreList to skip context for ignored sources
 			if show_context {
 				lines := strings.split(source, "\n")
 				num_lines := len(lines)
@@ -296,7 +335,7 @@ cmd_transform :: proc(args: []string) {
 					if i < 0 || i >= num_lines {
 						continue
 					}
-					fmt.printfln("%*d: %s", width, i, lines[i])
+					fmt.printfln("%*d: %s", width, i + 1, lines[i])
 					if i == int(line) {
 						fmt.printfln(
 							"%s^",
