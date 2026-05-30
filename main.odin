@@ -99,9 +99,12 @@ cmd_translate :: proc(args: []string) {
 		return
 	}
 
-	source_map: Source_Map_V3
-	json_read_sourcemap(data, &source_map)
-	free_all(context.temp_allocator)
+	source_map, source_map_ok := source_map_read(data)
+	defer free_all(context.temp_allocator)
+	if !source_map_ok {
+		fmt.eprintln("could not read source-map")
+		os.exit(1)
+	}
 
 	mapping, ok := translate_mapping(source_map, line, column)
 	if ok {
@@ -223,7 +226,6 @@ cmd_transform :: proc(args: []string) {
 		}
 		i += 1
 	}
-	fmt.printfln("mappings = %v", mappings)
 	data, read_error := read_input(input)
 	if read_error != nil {
 		fmt.eprintfln("could not read input: v%", read_error)
@@ -243,29 +245,29 @@ cmd_transform :: proc(args: []string) {
 			if index > -1 {
 				tmp_path := frame.pathname[index + len(path):]
 				new_path = strings.join({replacement, tmp_path, ".map"}, "")
-				fmt.printfln("new_path=%s", new_path)
-
 				break
 			}
 		}
 		if len(new_path) > 0 {
-			fmt.printfln("fount path")
 			// load file
 			source_map, source_map_ok := file_map[new_path]
 			if !source_map_ok {
 				data, read_error := read_input(new_path)
 				if read_error != nil {
-					fmt.eprintfln("could not read input: %e", read_error)
 					os.exit(1)
 				}
-				json_read_sourcemap(data, &source_map)
-				file_map[new_path] = source_map
+				source_map, source_map_ok = source_map_read(data)
+				if !source_map_ok {
+					fmt.eprintln("could not read source-map")
+				}
+				if source_map_ok {
+					file_map[new_path] = source_map
+				}
 			}
 
 			// parse file
 			mapping, mapping_ok := translate_mapping(source_map, i32(frame.line), i32(frame.col))
 			if mapping_ok {
-				fmt.printfln("mapping = %v", mapping)
 				// TODO: consider using uints for Mapping struct
 				line := uint(mapping.original_line + 1)
 				col := uint(mapping.original_column + 1)
@@ -326,12 +328,10 @@ cmd_transform :: proc(args: []string) {
 			if show_context {
 				lines := strings.split(source, "\n")
 				num_lines := len(lines)
-				width := len(fmt.aprintf("%d", num_lines))
 				line := int(frame.line) - 1
 				col := int(frame.col) - 1
-				for i = int(line) - context_lines_pre;
-				    i <= int(line) + context_lines_post;
-				    i += 1 {
+				width := len(fmt.aprintf("%d", line + context_lines_post))
+				for i = line - context_lines_pre; i <= line + context_lines_post; i += 1 {
 					if i < 0 || i >= num_lines {
 						continue
 					}

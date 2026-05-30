@@ -37,7 +37,7 @@ translate_mapping :: proc(source_map: Source_Map_V3, line: i32, col: i32) -> (^M
 
 	num_mapping_lines := i32(len(source_map.mappings))
 	if generated_line < 0 || generated_line >= num_mapping_lines {
-		fmt.printfln("line out of range: %i", line)
+		fmt.printfln("line out of range: %i. Got %i", line, num_mapping_lines)
 		return nil, false
 	}
 
@@ -65,34 +65,32 @@ translate_mapping :: proc(source_map: Source_Map_V3, line: i32, col: i32) -> (^M
 
 
 // TODO: write tests
-json_read_sourcemap :: proc(
-	data: []u8,
-	source_map: ^Source_Map_V3,
-	allocator := context.allocator,
-) {
+source_map_read :: proc(data: []u8, allocator := context.allocator) -> (Source_Map_V3, bool) {
 	value, json_error := json.parse(data, parse_integers = true, allocator = allocator)
 
 	if json_error != nil {
-		fmt.printfln("%e", json_error)
-		return
+		fmt.eprintfln("%e", json_error)
+		return {}, false
 	}
 
 	object, object_ok := value.(json.Object)
 	if !object_ok {
-		fmt.printfln("Null not an object", value)
-		return
+		fmt.eprintfln("Null not an object", value)
+		return {}, false
 	}
+
+	source_map: Source_Map_V3
 
 	// version
 	{
 		version, version_ok := json_object_get_prop(object, "version", json.Integer)
 		if !version_ok {
-			fmt.printfln("version Null or not an Integer")
-			return
+			fmt.eprintfln("version Null or not an Integer")
+			return {}, false
 		}
 		if version != 3 {
-			fmt.printfln("version %i not supported", version)
-			return
+			fmt.eprintfln("version %i not supported", version)
+			return {}, false
 		}
 		source_map.version = 3
 	}
@@ -117,8 +115,8 @@ json_read_sourcemap :: proc(
 	{
 		mappings, mappings_ok := json_object_get_prop(object, "mappings", json.String)
 		if !mappings_ok {
-			fmt.printfln("mappings Null or not a string")
-			return
+			fmt.eprintfln("mappings Null or not a string")
+			return {}, false
 		}
 		decoded_mappings := mappings_decode(mappings, allocator)
 		source_map.mappings = decoded_mappings
@@ -170,8 +168,8 @@ json_read_sourcemap :: proc(
 	{
 		sources, sources_ok := json_object_get_prop(object, "sources", json.Array)
 		if !sources_ok {
-			fmt.printfln("sources Null or not an Array")
-			return
+			fmt.eprintfln("sources Null or not an Array")
+			return {}, false
 		}
 		sources_list := json_string_array(sources, allocator)
 		source_map.sources = sources_list[:]
@@ -181,13 +179,14 @@ json_read_sourcemap :: proc(
 	{
 		content, content_ok := json_object_get_prop(object, "sourcesContent", json.Array)
 		if !content_ok {
-			fmt.printfln("sourcesContent Null or not an Array")
-			return
+			fmt.eprintfln("sourcesContent Null or not an Array")
+			return {}, false
 		}
 		content_list := json_string_array(content, allocator)
 		source_map.sources_content = content_list[:]
 	}
 
+	return source_map, true
 }
 
 json_string_array :: proc(array: json.Array, allocator := context.allocator) -> []string {
