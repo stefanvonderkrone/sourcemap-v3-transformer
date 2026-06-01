@@ -179,6 +179,7 @@ cmd_transform :: proc(args: []string) {
 	i := 0
 	use_json := false
 	show_context := false
+	no_ignore := false
 	context_lines_pre := 3
 	context_lines_post := 3
 	for i < num_args {
@@ -223,6 +224,10 @@ cmd_transform :: proc(args: []string) {
 			fallthrough
 		case "--context":
 			show_context = true
+		case "-n":
+			fallthrough
+		case "--no-ignore":
+			no_ignore = true
 		}
 		i += 1
 	}
@@ -241,7 +246,6 @@ cmd_transform :: proc(args: []string) {
 		// find path from mappings
 		for path, replacement in mappings {
 			index := strings.index(frame.pathname, path)
-			// TODO: handle missing mapping
 			if index > -1 {
 				tmp_path := frame.pathname[index + len(path):]
 				new_path = strings.join({replacement, tmp_path, ".map"}, "")
@@ -297,11 +301,19 @@ cmd_transform :: proc(args: []string) {
 					source = source_map.sources_content[mapping.source_index]
 				}
 				// push translation
-				append(&translated_stack_frames, Stack_Frame{line, col, pathname, name})
-				append(&sources, source)
+				if no_ignore ||
+				   !slice.contains(source_map.ignore_list, u16(mapping.source_index)) {
+					append(&translated_stack_frames, Stack_Frame{line, col, pathname, name})
+					append(&sources, source)
+				}
+			}
+		} else {
+			fmt.eprintfln("no mapping found for '%s'", frame.pathname)
+			if no_ignore {
+				append(&translated_stack_frames, frame)
+				append(&sources, "")
 			}
 		}
-		// TODO: no mapping found
 	}
 	if use_json {
 		json_string, error := json.marshal(
@@ -325,7 +337,7 @@ cmd_transform :: proc(args: []string) {
 			}
 			fmt.print("\n")
 			// TODO: show context only for first stack frame OR use ignoreList to skip context for ignored sources
-			if show_context {
+			if show_context && len(source) > 0 {
 				lines := strings.split(source, "\n")
 				num_lines := len(lines)
 				line := int(frame.line) - 1
@@ -335,7 +347,7 @@ cmd_transform :: proc(args: []string) {
 					if i < 0 || i >= num_lines {
 						continue
 					}
-					fmt.printfln("%*d: %s", width, i + 1, lines[i])
+					fmt.printfln("% *d: %s", width, i + 1, lines[i])
 					if i == int(line) {
 						fmt.printfln(
 							"%s^",
