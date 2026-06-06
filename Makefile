@@ -1,8 +1,13 @@
 BIN_DIR := bin
-BIN := $(BIN_DIR)/sourcemaps-v3-transformer
+BINARY := sourcemaps-v3-transformer
+BIN := $(BIN_DIR)/$(BINARY)
 
-main: *.odin
-	odin build . -o:aggressive -out:$(BIN)
+$(BIN): *.odin
+	odin build . -vet -o:aggressive -out:$(BIN)
+
+.PHONY: clean
+clean:
+	rm $(BIN)
 
 fast: *.odin
 	odin build . -out:$(BIN)

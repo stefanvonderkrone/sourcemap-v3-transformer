@@ -1,8 +1,6 @@
 package smv3t
 
-import "core:fmt"
 import "core:slice"
-import "core:strconv"
 import "core:strings"
 import "core:testing"
 
@@ -105,7 +103,7 @@ parse_stack_trace :: proc(
 		if has_closing_parenthesis {
 			end_pos := parser_current_position(&parser)
 			start_pos := end_pos
-			for char, idx in parser_iterator(&parser) {
+			for _, idx in parser_iterator(&parser) {
 				// we need space for " at "
 				if idx < 4 {
 					break

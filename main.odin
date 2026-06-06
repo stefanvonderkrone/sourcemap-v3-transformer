@@ -1,16 +1,13 @@
 package smv3t
 
-import "core:bufio"
 import "core:encoding/json"
 import "core:fmt"
 import "core:io"
-import vmem "core:mem/virtual"
 import "core:os"
 import "core:path/filepath"
 import "core:slice"
 import "core:strconv"
 import "core:strings"
-import "core:testing"
 
 main :: proc() {
 	num_args := len(os.args)
@@ -122,13 +119,16 @@ cmd_translate :: proc(args: []string) {
 			stack_frame.name = source_map.names[mapping.name_index]
 		}
 
-		json_string, ok := json.marshal(stack_frame, {use_spaces = true, pretty = true})
+		json_string, json_error := json.marshal(stack_frame, {use_spaces = true, pretty = true})
+		if json_error != nil {
+			fmt.eprintfln("failed to convert to json: %v", json_error)
+			os.exit(1)
+		}
 		fmt.printfln("%s", json_string)
 	}
 }
 
 cmd_parse :: proc(args: []string) {
-	num_args := len(args)
 	input := ""
 	version := 1
 	for arg in args {
@@ -231,9 +231,9 @@ cmd_transform :: proc(args: []string) {
 		}
 		i += 1
 	}
-	data, read_error := read_input(input)
-	if read_error != nil {
-		fmt.eprintfln("could not read input: v%", read_error)
+	data, data_error := read_input(input)
+	if data_error != nil {
+		fmt.eprintfln("could not read input: v%", data_error)
 		os.exit(1)
 	}
 	stack_frames := parse_stack_trace_v3(string(data))
@@ -256,11 +256,11 @@ cmd_transform :: proc(args: []string) {
 			// load file
 			source_map, source_map_ok := file_map[new_path]
 			if !source_map_ok {
-				data, read_error := read_input(new_path)
+				read_bytes, read_error := read_input(new_path)
 				if read_error != nil {
 					os.exit(1)
 				}
-				source_map, source_map_ok = source_map_read(data)
+				source_map, source_map_ok = source_map_read(read_bytes)
 				if !source_map_ok {
 					fmt.eprintln("could not read source-map")
 				}
@@ -316,10 +316,14 @@ cmd_transform :: proc(args: []string) {
 		}
 	}
 	if use_json {
-		json_string, error := json.marshal(
+		json_string, json_error := json.marshal(
 			translated_stack_frames,
 			{use_spaces = true, pretty = true},
 		)
+		if json_error != nil {
+			fmt.eprintfln("failed to convert to json: %v", json_error)
+			os.exit(1)
+		}
 		fmt.printfln("%s", json_string)
 	} else {
 		for frame, index in translated_stack_frames {

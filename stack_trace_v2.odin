@@ -1,9 +1,5 @@
 package smv3t
 
-import "core:fmt"
-import "core:math"
-import "core:odin/tokenizer"
-import "core:slice"
 import "core:strconv"
 import "core:strings"
 import "core:testing"
@@ -23,7 +19,6 @@ parse_stack_trace_v2 :: proc(
 		tokens = token_trim(tokens)
 
 		num_tokens := len(tokens)
-		token_index := num_tokens - 1
 
 		// we need to look at the first two tokens at least
 		if num_tokens < 2 {

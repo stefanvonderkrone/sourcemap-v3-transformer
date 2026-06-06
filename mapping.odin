@@ -463,7 +463,7 @@ char_to_integer :: proc(char: rune) -> i32 {
 }
 
 unsigned_right_shift32 :: proc(x: i32, n: uint) -> i32 {
-	return i32(transmute(u32)x >> n)
+	return i32(u32(x) >> n)
 }
 
 @(test)
