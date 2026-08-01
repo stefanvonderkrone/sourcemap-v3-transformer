@@ -1,1 +1,11 @@
 bin/
+.claude
+.opencode
+benchmark
+js
+maps
+npm
+stacktraces
+test-app
+webapp
+.DS_Store

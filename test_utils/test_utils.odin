@@ -1,11 +1,13 @@
-package smv3t
+#+build !wasm32
+#+build !wasm64p32
+
+package test_utils
 
 import "core:fmt"
 import "core:math"
 import "core:slice"
 import "core:testing"
 
-@(private)
 expect_slice :: proc(
 	t: ^testing.T,
 	result, expected: $T/[]$E,

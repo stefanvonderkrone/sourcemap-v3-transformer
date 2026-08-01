@@ -1,5 +1,11 @@
+#+build !js
+
 package smv3t
 
+import m "./mapping"
+import st "./stack_trace"
+import stv2 "./stack_trace/v2"
+import stv3 "./stack_trace/v3"
 import "core:encoding/json"
 import "core:fmt"
 import "core:io"
@@ -96,16 +102,16 @@ cmd_translate :: proc(args: []string) {
 		return
 	}
 
-	source_map, source_map_ok := source_map_read(data)
+	source_map, source_map_ok := m.source_map_read(data)
 	defer free_all(context.temp_allocator)
 	if !source_map_ok {
 		fmt.eprintln("could not read source-map")
 		os.exit(1)
 	}
 
-	mapping, ok := translate_mapping(source_map, line, column)
+	mapping, ok := m.translate_mapping(source_map, line, column)
 	if ok {
-		stack_frame: Stack_Frame
+		stack_frame: st.Stack_Frame
 		// TODO: consider using uints for Mapping struct
 		stack_frame.line = uint(mapping.original_line + 1)
 		stack_frame.col = uint(mapping.original_column + 1)
@@ -152,14 +158,14 @@ cmd_parse :: proc(args: []string) {
 		os.exit(1)
 	}
 
-	stack_frames: []Stack_Frame = ---
+	stack_frames: []st.Stack_Frame = ---
 	switch (version) {
 	case 1:
-		stack_frames = parse_stack_trace(string(data))
+		stack_frames = st.parse_stack_trace(string(data))
 	case 2:
-		stack_frames = parse_stack_trace_v2(string(data))
+		stack_frames = stv2.parse_stack_trace_v2(string(data))
 	case 3:
-		stack_frames = parse_stack_trace_v3(string(data))
+		stack_frames = stv3.parse_stack_trace_v3(string(data))
 	}
 	json_out, json_error := json.marshal(stack_frames, {use_spaces = true, pretty = true})
 	if json_error != nil {
@@ -236,10 +242,15 @@ cmd_transform :: proc(args: []string) {
 		fmt.eprintfln("could not read input: v%", data_error)
 		os.exit(1)
 	}
-	stack_frames := parse_stack_trace_v3(string(data))
+	stack_frames := stv3.parse_stack_trace_v3(string(data))
 	// file cache for map files
-	file_map: map[string]Source_Map_V3
-	translated_stack_frames := make([dynamic]Stack_Frame, 0, len(stack_frames), context.allocator)
+	file_map: map[string]m.Source_Map_V3
+	translated_stack_frames := make(
+		[dynamic]st.Stack_Frame,
+		0,
+		len(stack_frames),
+		context.allocator,
+	)
 	sources := make([dynamic]string, 0, len(stack_frames), context.allocator)
 	for frame in stack_frames {
 		new_path := ""
@@ -260,7 +271,7 @@ cmd_transform :: proc(args: []string) {
 				if read_error != nil {
 					os.exit(1)
 				}
-				source_map, source_map_ok = source_map_read(read_bytes)
+				source_map, source_map_ok = m.source_map_read(read_bytes)
 				if !source_map_ok {
 					fmt.eprintln("could not read source-map")
 				}
@@ -270,7 +281,7 @@ cmd_transform :: proc(args: []string) {
 			}
 
 			// parse file
-			mapping, mapping_ok := translate_mapping(source_map, i32(frame.line), i32(frame.col))
+			mapping, mapping_ok := m.translate_mapping(source_map, i32(frame.line), i32(frame.col))
 			if mapping_ok {
 				// TODO: consider using uints for Mapping struct
 				line := uint(mapping.original_line + 1)
@@ -303,7 +314,7 @@ cmd_transform :: proc(args: []string) {
 				// push translation
 				if no_ignore ||
 				   !slice.contains(source_map.ignore_list, u16(mapping.source_index)) {
-					append(&translated_stack_frames, Stack_Frame{line, col, pathname, name})
+					append(&translated_stack_frames, st.Stack_Frame{line, col, pathname, name})
 					append(&sources, source)
 				}
 			}
@@ -388,7 +399,7 @@ read_input :: proc(path: Maybe(string), allocator := context.allocator) -> ([]by
 	if path != nil {
 		h, h_error := os.open(path.?)
 		if h_error != nil {
-			fmt.eprintfln("could not open file: %v", h_error)
+			fmt.eprintfln("could not open file: %s, reason: %v", path, h_error)
 			return {}, h_error
 		}
 		handle = h

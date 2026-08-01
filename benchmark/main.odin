@@ -5,6 +5,9 @@ import "core:os"
 import "core:time"
 
 import smv3t ".."
+import st "../stack_trace"
+import stv2 "../stack_trace/v2"
+import stv3 "../stack_trace/v3"
 
 ITERATIONS :: 10_000
 WARMUP :: 100
@@ -32,7 +35,7 @@ main :: proc() {
 
 bench_v1 :: proc(input: string) {
 	for _ in 0 ..< WARMUP {
-		frames := smv3t.parse_stack_trace(input)
+		frames := st.parse_stack_trace(input)
 		delete(frames)
 		free_all(context.temp_allocator)
 	}
@@ -41,7 +44,7 @@ bench_v1 :: proc(input: string) {
 	for r in 0 ..< RUNS {
 		start := time.tick_now()
 		for _ in 0 ..< ITERATIONS {
-			frames := smv3t.parse_stack_trace(input)
+			frames := st.parse_stack_trace(input)
 			delete(frames)
 			free_all(context.temp_allocator)
 		}
@@ -57,7 +60,7 @@ bench_v1 :: proc(input: string) {
 
 bench_v2 :: proc(input: string) {
 	for _ in 0 ..< WARMUP {
-		frames := smv3t.parse_stack_trace_v2(input)
+		frames := stv2.parse_stack_trace_v2(input)
 		delete(frames)
 		free_all(context.temp_allocator)
 	}
@@ -66,7 +69,7 @@ bench_v2 :: proc(input: string) {
 	for r in 0 ..< RUNS {
 		start := time.tick_now()
 		for _ in 0 ..< ITERATIONS {
-			frames := smv3t.parse_stack_trace_v2(input)
+			frames := stv2.parse_stack_trace_v2(input)
 			delete(frames)
 			free_all(context.temp_allocator)
 		}
@@ -82,7 +85,7 @@ bench_v2 :: proc(input: string) {
 
 bench_v3 :: proc(input: string) {
 	for _ in 0 ..< WARMUP {
-		frames := smv3t.parse_stack_trace_v3(input)
+		frames := stv3.parse_stack_trace_v3(input)
 		delete(frames)
 		free_all(context.temp_allocator)
 	}
@@ -91,7 +94,7 @@ bench_v3 :: proc(input: string) {
 	for r in 0 ..< RUNS {
 		start := time.tick_now()
 		for _ in 0 ..< ITERATIONS {
-			frames := smv3t.parse_stack_trace_v3(input)
+			frames := stv3.parse_stack_trace_v3(input)
 			delete(frames)
 			free_all(context.temp_allocator)
 		}
