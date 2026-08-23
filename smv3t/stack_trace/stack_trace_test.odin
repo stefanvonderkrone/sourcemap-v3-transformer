@@ -17,7 +17,7 @@ test_parse_stack_trace_safari_build :: proc(t: ^testing.T) {
 		Stack_Frame{line = 9, col = 28541, pathname = "/assets/index-D6p3_k4u.js", name = "Pc"},
 		Stack_Frame{line = 9, col = 28363, pathname = "/assets/index-D6p3_k4u.js", name = "j1"},
 	}
-	stack_trace := #load("../stacktraces/safari-build.txt", string)
+	stack_trace := #load("../../stacktraces/safari-build.txt", string)
 	stack_frames := parse_stack_trace(stack_trace)
 	defer delete(stack_frames)
 	if !slice.equal(stack_frames, test_frames) {
@@ -102,7 +102,7 @@ test_parse_stack_trace_safari_dev :: proc(t: ^testing.T) {
 			name = "performWorkUntilDeadline",
 		},
 	}
-	stack_trace := #load("../stacktraces/safari-dev.txt", string)
+	stack_trace := #load("../../stacktraces/safari-dev.txt", string)
 	stack_frames := parse_stack_trace(stack_trace)
 	defer delete(stack_frames)
 	if !slice.equal(stack_frames, test_frames) {
@@ -121,7 +121,7 @@ test_parse_stack_trace_chromium_build :: proc(t: ^testing.T) {
 		Stack_Frame{line = 9, col = 28539, pathname = "/assets/index-D6p3_k4u.js", name = "Pc"},
 		Stack_Frame{line = 9, col = 28361, pathname = "/assets/index-D6p3_k4u.js", name = "j1"},
 	}
-	stack_trace := #load("../stacktraces/chromium-build.txt", string)
+	stack_trace := #load("../../stacktraces/chromium-build.txt", string)
 	stack_frames := parse_stack_trace(stack_trace)
 	defer delete(stack_frames)
 	if !slice.equal(stack_frames, test_frames) {
@@ -188,7 +188,7 @@ test_parse_stack_trace_chromium_dev :: proc(t: ^testing.T) {
 			name = "commitPassiveMountOnFiber",
 		},
 	}
-	stack_trace := #load("../stacktraces/chromium-dev.txt", string)
+	stack_trace := #load("../../stacktraces/chromium-dev.txt", string)
 	stack_frames := parse_stack_trace(stack_trace)
 	defer delete(stack_frames)
 	if !slice.equal(stack_frames, test_frames) {
@@ -248,7 +248,7 @@ test_parse_stack_trace_node :: proc(t: ^testing.T) {
 			name = "async asyncRunEntryPointWithESMLoader",
 		},
 	}
-	stack_trace := #load("../stacktraces/node.txt", string)
+	stack_trace := #load("../../stacktraces/node.txt", string)
 	stack_frames := parse_stack_trace(stack_trace)
 	defer delete(stack_frames)
 	if !slice.equal(stack_frames, test_frames) {
@@ -291,7 +291,7 @@ test_parse_stack_trace_bun :: proc(t: ^testing.T) {
 		},
 		Stack_Frame{line = 2, col = 1, pathname = "", name = "loadAndEvaluateModule"},
 	}
-	stack_trace := #load("../stacktraces/bun.txt", string)
+	stack_trace := #load("../../stacktraces/bun.txt", string)
 	stack_frames := parse_stack_trace(stack_trace)
 	defer delete(stack_frames)
 	if !slice.equal(stack_frames, test_frames) {
@@ -333,7 +333,7 @@ test_parse_stack_trace_deno :: proc(t: ^testing.T) {
 			name = "",
 		},
 	}
-	stack_trace := #load("../stacktraces/deno.txt", string)
+	stack_trace := #load("../../stacktraces/deno.txt", string)
 	stack_frames := parse_stack_trace(stack_trace)
 	defer delete(stack_frames)
 	if !slice.equal(stack_frames, test_frames) {
@@ -378,7 +378,7 @@ test_parse_stack_trace_zen_build :: proc(t: ^testing.T) {
 		},
 		Stack_Frame{line = 9, col = 38122, pathname = "/assets/index-D6p3_k4u.js", name = ""},
 	}
-	stack_trace := #load("../stacktraces/zen-build.txt", string)
+	stack_trace := #load("../../stacktraces/zen-build.txt", string)
 	stack_frames := parse_stack_trace(stack_trace)
 	defer delete(stack_frames)
 	if !slice.equal(stack_frames, test_frames) {
@@ -402,7 +402,7 @@ test_parse_stack_trace_firefox_build :: proc(t: ^testing.T) {
 		Stack_Frame{line = 9, col = 28541, pathname = "/assets/index-D6p3_k4u.js", name = "Pc"},
 		Stack_Frame{line = 9, col = 28361, pathname = "/assets/index-D6p3_k4u.js", name = "j1"},
 	}
-	stack_trace := #load("../stacktraces/firefox-build.txt", string)
+	stack_trace := #load("../../stacktraces/firefox-build.txt", string)
 	stack_frames := parse_stack_trace(stack_trace)
 	defer delete(stack_frames)
 	if !slice.equal(stack_frames, test_frames) {
@@ -553,7 +553,7 @@ test_parse_stack_trace_firefox_dev :: proc(t: ^testing.T) {
 			name = "",
 		},
 	}
-	stack_trace := #load("../stacktraces/firefox-dev.txt", string)
+	stack_trace := #load("../../stacktraces/firefox-dev.txt", string)
 	stack_frames := parse_stack_trace(stack_trace)
 	defer delete(stack_frames)
 	if !slice.equal(stack_frames, test_frames) {
@@ -638,7 +638,7 @@ test_parse_stack_trace_zen_dev :: proc(t: ^testing.T) {
 			name = "performWorkUntilDeadline",
 		},
 	}
-	stack_trace := #load("../stacktraces/zen-dev.txt", string)
+	stack_trace := #load("../../stacktraces/zen-dev.txt", string)
 	stack_frames := parse_stack_trace(stack_trace)
 	defer delete(stack_frames)
 	if !slice.equal(stack_frames, test_frames) {

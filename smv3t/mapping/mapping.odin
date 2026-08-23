@@ -1,9 +1,86 @@
 package mapping
 
+import h "../help"
+import io "../io"
+import st "../stack_trace"
 import "core:encoding/json"
 import "core:fmt"
 import vmem "core:mem/virtual"
+import "core:os"
+import "core:strconv"
 import "core:strings"
+
+translate :: proc(args: []string) {
+	num_args := len(args)
+	if num_args == 0 {
+		h.print_help(.Translate)
+		return
+	}
+
+	for arg in args {
+		switch (arg) {
+		case "-h":
+			fallthrough
+		case "--help":
+			h.print_help(.Translate)
+			os.exit(0)
+		}
+	}
+
+	file_name := args[0]
+	line: i32 = 0
+	column: i32 = 0
+
+	if num_args > 1 {
+		if l, ok := strconv.parse_int(args[1]); ok {
+			line = i32(l)
+		}
+	}
+
+	if num_args > 2 {
+		if c, ok := strconv.parse_int(args[2]); ok {
+			column = i32(c)
+		}
+	}
+
+	data, read_error := io.read_input(file_name)
+	if read_error != nil {
+		fmt.eprintfln("could not read input: %e", read_error)
+		return
+	}
+
+	source_map, source_map_ok := source_map_read(data)
+	defer free_all(context.temp_allocator)
+	if !source_map_ok {
+		fmt.eprintln("could not read source-map")
+		os.exit(1)
+	}
+
+	mapping, ok := translate_mapping(source_map, line, column)
+	if ok {
+		stack_frame: st.Stack_Frame
+		// TODO: consider using uints for Mapping struct
+		stack_frame.line = uint(mapping.original_line + 1)
+		stack_frame.col = uint(mapping.original_column + 1)
+
+		if mapping.source_index >= 0 && int(mapping.source_index) < len(source_map.sources) {
+			stack_frame.pathname = source_map.sources[mapping.source_index]
+		}
+		if mapping.length > 4 &&
+		   mapping.name_index >= 0 &&
+		   int(mapping.name_index) < len(source_map.names) {
+			stack_frame.name = source_map.names[mapping.name_index]
+		}
+
+		json_string, json_error := json.marshal(stack_frame, {use_spaces = true, pretty = true})
+		if json_error != nil {
+			fmt.eprintfln("failed to convert to json: %v", json_error)
+			os.exit(1)
+		}
+		fmt.printfln("%s", json_string)
+	}
+}
+
 
 Source_Map_V3 :: struct {
 	version:         u8, // mandatory
